@@ -377,3 +377,16 @@ Internet connection
 # License
 
 MIT License
+
+Key Features
+
+✓ Gemini 3.6 Flash
+✓ Hybrid Rule Engine
+✓ Retrieval-Augmented Generation (RAG)
+✓ FAISS Vector Database
+✓ HuggingFace Embeddings
+✓ Semantic Search
+✓ Local Answer Cache
+✓ Streamlit UI
+✓ PHP Code Generation
+✓ Modular Architecture
