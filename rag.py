@@ -261,57 +261,192 @@ def create_rag_chain(vectorstore_path="vectorstore", k=DEFAULT_K, mock_mode=Fals
 
 def check_rule_engine(question: str):
     """
-    Rule-based engine.
+    Hybrid Rule Engine.
+
     Returns:
         dict -> if a rule matches
-        None -> if no rule matches
+        None -> otherwise
     """
 
     question = question.lower().strip()
+
     question = re.sub(r"[^a-z0-9 ]", " ", question)
     question = " ".join(question.split())
 
     rules = [
 
-    {
-    "keywords": ["database", "mysql"],
-    "answer": "Database configuration is available in config/database.php."
-    },
+        # --------------------------------------------
+        # Greetings
+        # --------------------------------------------
 
-    {
-    "keywords": ["route", "routes"],
-    "answer": "Routes are defined in routes/web.php."
-    },
+        {
+            "keywords": ["hello", "hi", "hey"],
+            "answer": "Hello! How can I help you with your PHP project today?"
+        },
 
-    {
-    "keywords": ["controller"],
-    "answer": "Controllers are stored in app/Http/Controllers."
-    },
+        {
+            "keywords": ["good morning"],
+            "answer": "Good morning! How can I help you?"
+        },
 
-    {
-    "keywords": ["model"],
-    "answer": "Models are stored in app/Models."
-    },
+        {
+            "keywords": ["good afternoon"],
+            "answer": "Good afternoon! How can I help you?"
+        },
 
-    {
-    "keywords": ["middleware"],
-    "answer": "Middleware classes are located in app/Http/Middleware."
-    },
+        {
+            "keywords": ["good evening"],
+            "answer": "Good evening! How can I help you?"
+        },
 
-    {
-    "keywords": ["migration"],
-    "answer": "Database migrations are located in database/migrations."
-    },
+        {
+            "keywords": ["thanks", "thank you"],
+            "answer": "You're welcome!"
+        },
 
-    {
-    "keywords": ["view", "blade"],
-    "answer": "Blade templates are stored in resources/views."
-    },
+        {
+            "keywords": ["bye", "goodbye"],
+            "answer": "Goodbye! Have a great day."
+        },
 
-    {
-    "keywords": ["invoice"],
-    "answer": "Invoice-related functionality is handled by the Invoice module."
-    }
+        # --------------------------------------------
+        # Project
+        # --------------------------------------------
+
+        {
+            "keywords": ["project"],
+            "answer": "This project is a PHP RAG Assistant built using Gemini 3.6 Flash, FAISS and HuggingFace Embeddings."
+        },
+
+        {
+            "keywords": ["php"],
+            "answer": "The project is developed in PHP."
+        },
+
+        {
+            "keywords": ["laravel"],
+            "answer": "This assistant is designed to understand Laravel/PHP projects."
+        },
+
+        # --------------------------------------------
+        # AI
+        # --------------------------------------------
+
+        {
+            "keywords": ["rag"],
+            "answer": "This project uses Retrieval-Augmented Generation (RAG)."
+        },
+
+        {
+            "keywords": ["gemini"],
+            "answer": "Gemini 3.6 Flash is used as the Large Language Model."
+        },
+
+        {
+            "keywords": ["llm"],
+            "answer": "Gemini 3.6 Flash is the Large Language Model used by this assistant."
+        },
+
+        {
+            "keywords": ["embedding", "embeddings"],
+            "answer": "Embeddings are generated using BAAI/bge-base-en-v1.5."
+        },
+
+        {
+            "keywords": ["faiss", "vector", "vectorstore"],
+            "answer": "FAISS is used as the vector database."
+        },
+
+        {
+            "keywords": ["cache"],
+            "answer": "Generated answers are stored in answer_cache.json."
+        },
+
+        # --------------------------------------------
+        # Laravel Structure
+        # --------------------------------------------
+
+        {
+            "keywords": ["database", "mysql"],
+            "answer": "Database configuration is available inside config/database.php."
+        },
+
+        {
+            "keywords": ["route", "routes"],
+            "answer": "Application routes are defined in routes/web.php."
+        },
+
+        {
+            "keywords": ["controller", "controllers"],
+            "answer": "Controllers are located inside app/Http/Controllers."
+        },
+
+        {
+            "keywords": ["model", "models"],
+            "answer": "Models are stored inside app/Models."
+        },
+
+        {
+            "keywords": ["middleware"],
+            "answer": "Middleware classes are located inside app/Http/Middleware."
+        },
+
+        {
+            "keywords": ["migration", "migrations"],
+            "answer": "Database migrations are stored in database/migrations."
+        },
+
+        {
+            "keywords": ["blade", "view", "views"],
+            "answer": "Blade templates are located in resources/views."
+        },
+
+        {
+            "keywords": ["config"],
+            "answer": "Configuration files are stored inside the config directory."
+        },
+
+        {
+            "keywords": ["composer"],
+            "answer": "Composer manages PHP dependencies using composer.json."
+        },
+
+        # --------------------------------------------
+        # Common Modules
+        # --------------------------------------------
+
+        {
+            "keywords": ["login", "signin", "authentication"],
+            "answer": "Authentication is handled through Laravel authentication controllers and middleware."
+        },
+
+        {
+            "keywords": ["logout"],
+            "answer": "Logout functionality is handled through the authentication module."
+        },
+
+        {
+            "keywords": ["invoice", "billing"],
+            "answer": "Invoice functionality is implemented in the invoice module."
+        },
+
+        {
+            "keywords": ["payment"],
+            "answer": "Payment functionality is implemented in the payment module."
+        },
+
+        {
+            "keywords": ["user", "users"],
+            "answer": "User functionality is managed using the User model and related controllers."
+        },
+
+        {
+            "keywords": ["api"],
+            "answer": "API routes are generally defined in routes/api.php."
+        }
+
+    ]
+
     for rule in rules:
 
         for keyword in rule["keywords"]:
@@ -326,19 +461,23 @@ def check_rule_engine(question: str):
 
     return None
 
+
 def query_rag(
     rag_components,
     question,
     use_cache=True,
     media_bytes=None,
     mime_type=None,
-    ):
-    
+):
     """
-    Return an answer using:
+    Query the PHP RAG Assistant.
+
+    Pipeline:
     1. Rule Engine
-    2. FAISS Retrieval
-    3. Gemini 3.6 Flash
+    2. Cache
+    3. FAISS Retrieval
+    4. Gemini
+    5. Save Cache
     """
 
     vectorstore = rag_components["vectorstore"]
@@ -346,23 +485,25 @@ def query_rag(
     mock_mode = rag_components["mock_mode"]
     k = rag_components["k"]
 
-    # ------------------------------------------------------------
-    # Rule Engine
-    # ------------------------------------------------------------
+    # ============================================================
+    # 1. Rule Engine
+    # ============================================================
+
     rule = check_rule_engine(question or "")
 
     if rule:
         return (
             rule["answer"],
-            [],
+            ["Rule Engine"],
             [],
             False,
             None,
         )
 
-    # ------------------------------------------------------------
-    # Cache
-    # ------------------------------------------------------------
+    # ============================================================
+    # 2. Cache
+    # ============================================================
+
     cache_key = make_cache_key(
         (question or "") + str(mime_type),
         vectorstore_path,
@@ -382,21 +523,23 @@ def query_rag(
 
             return (
                 cached_item["answer"],
-                [],
+                cached_item.get("sources", []),
                 [],
                 True,
                 file_path,
             )
 
-    # ------------------------------------------------------------
-    # Retrieve documents from FAISS
-    # ------------------------------------------------------------
-documents = vectorstore.max_marginal_relevance_search(
-    question,
-    k=k,
-    fetch_k=max(40, k * 4),
-    lambda_mult=0.6,
-)
+    # ============================================================
+    # 3. Retrieve Documents
+    # ============================================================
+
+    documents = vectorstore.max_marginal_relevance_search(
+        question,
+        k=k,
+        fetch_k=max(40, k * 4),
+        lambda_mult=0.6,
+    )
+
     source_files = list(
         dict.fromkeys(
             doc.metadata.get("source", "Unknown")
@@ -404,9 +547,10 @@ documents = vectorstore.max_marginal_relevance_search(
         )
     )
 
-    # ------------------------------------------------------------
+    # ============================================================
     # Demo Mode
-    # ------------------------------------------------------------
+    # ============================================================
+
     if mock_mode:
 
         answer = (
@@ -422,32 +566,33 @@ documents = vectorstore.max_marginal_relevance_search(
             None,
         )
 
-    # ------------------------------------------------------------
+    # ============================================================
     # No documents found
-    # ------------------------------------------------------------
+    # ============================================================
+
     if not documents:
 
-return (
-    rule["answer"],
-    ["Rule Engine"],
-    [],
-    False,
-    None,
-    )
+        return (
+            "I couldn't find this information in the PHP project.",
+            [],
+            [],
+            False,
+            None,
+        )
 
-    # ------------------------------------------------------------
-    # Build prompt
-    # ------------------------------------------------------------
+    # ============================================================
+    # 4. Build Prompt
+    # ============================================================
+
     prompt = build_prompt(
-        question
-        if question
-        else "Analyze the attached media.",
+        question if question else "Analyze the attached media.",
         format_context(documents),
     )
 
-    # ------------------------------------------------------------
-    # Gemini
-    # ------------------------------------------------------------
+    # ============================================================
+    # 5. Gemini
+    # ============================================================
+
     try:
 
         answer = generate_answer(
@@ -475,22 +620,97 @@ return (
 
         raise
 
-    # ------------------------------------------------------------
-    # Save generated PHP code
-    # ------------------------------------------------------------
+    # ============================================================
+    # Save Generated PHP File
+    # ============================================================
+
     file_path = save_generated_php_code(answer)
 
-    # ------------------------------------------------------------
-    # Save cache
-    # ------------------------------------------------------------
+    # ============================================================
+    # Save Cache
+    # ============================================================
+
     if use_cache and not media_bytes:
 
         cache = load_answer_cache()
 
-cache[cache_key] = {
+        cache[cache_key] = {
+            "question": question,
+            "answer": answer,
+            "model": GEMINI_MODEL,
+            "sources": source_files,
+        }
+
+        save_answer_cache(cache)
+
+    # ============================================================
+    # Return
+    # ============================================================
+
+    return (
+        answer,
+        source_files,
+        documents,
+        False,
+        file_path,
+    )
+    # ------------------------------------------------------------
+    # Build prompt
+    # ------------------------------------------------------------
+prompt = build_prompt(
+        question
+        if question
+        else "Analyze the attached media.",
+        format_context(documents),
+    )
+
+    # ------------------------------------------------------------
+    # Gemini
+    # ------------------------------------------------------------
+try:
+
+        answer = generate_answer(
+            rag_components["client"],
+            prompt,
+            media_bytes=media_bytes,
+            mime_type=mime_type,
+        )
+
+        if not answer.strip():
+            answer = "I couldn't generate an answer."
+
+except Exception as error:
+
+        error_message = str(error)
+
+        if (
+            "RESOURCE_EXHAUSTED" in error_message
+            or "429" in error_message
+            or "quota" in error_message.lower()
+        ):
+            raise GeminiQuotaError(
+                extract_retry_seconds(error_message)
+            ) from error
+
+        raise
+
+    # ------------------------------------------------------------
+    # Save generated PHP code
+    # ------------------------------------------------------------
+        file_path = save_generated_php_code(answer)
+
+    # ------------------------------------------------------------
+    # Save cache
+    # ------------------------------------------------------------
+        if use_cache and not media_bytes:
+
+            cache = load_answer_cache()
+
+        cache[cache_key] = {
     "question": question,
     "answer": answer,
     "model": GEMINI_MODEL,
     "sources": source_files,
-    }
+         }
+    
         save_answer_cache(cache)
