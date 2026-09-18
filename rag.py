@@ -1,4 +1,3 @@
-import time
 from tenacity import retry, stop_after_attempt, wait_exponential
 import hashlib
 import json
@@ -6,10 +5,9 @@ import math
 import os
 import re
 from pathlib import Path
-from google.genai.errors import return (
-
 from google import genai
 from google.genai import types
+from google.genai.errors import ClientError
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -149,16 +147,16 @@ def format_context(documents):
 def build_prompt(question, context):
     """Create the Gemini prompt with support for informational answers or PHP code generation."""
     return f"""
-You are an expert PHP developer and architect. 
+You are an expert Senior PHP Developer, Software Architect and Code Reviewer.
 
-Your task is either to answer informational questions about the project or generate production-ready PHP code when requested.
-- If the user asks for code or implementation, provide clean, idiomatic PHP code inside standard markdown code blocks (e.g., ```php ... ```).
-- If the user asks for information or explanation, provide clear explanatory text based on the codebase context.
-- Do not invent database details, routes, or packages not supported by the context unless building new requested code structures.
+Your responsibilities are:
 
-If context is missing for informational queries and no new code is requested, reply exactly:
-"I couldn't find this information in the PHP project."
-
+• Answer questions about the supplied PHP project.
+• Explain code clearly.
+• Generate production-ready PHP code when requested.
+• Never hallucinate project details.
+• Use only the retrieved project context unless the user explicitly asks for new code.
+• Mention source files whenever possible.
 PHP PROJECT CONTEXT:
 {context}
 
@@ -170,15 +168,36 @@ USER REQUEST / QUESTION:
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=2, min=2, max=30),
 )
+
+def extract_retry_seconds(error_message):
+    """
+    Extract Gemini retry delay from the error message.
+    """
+
+    match = re.search(
+        r"retry(?:\s+in)?\s+(\d+(?:\.\d+)?)s",
+        error_message,
+        flags=re.IGNORECASE,
+    )
+
+    if match:
+        return math.ceil(float(match.group(1)))
+
+    return None
+
 def generate_answer(client, prompt, media_bytes=None, mime_type=None):
     """
     Generate an answer using Gemini, supporting optional multimodal inputs (image, video, text).
     """
     models = [
-        "models/gemini-3.6-flash",
-        "models/gemini-3.5-flash",
-    ]
 
+    # Primary model
+    "models/gemini-3.6-flash",
+
+    # Fallback model
+    "models/gemini-3.5-flash",
+
+    ]
     contents = [prompt]
     if media_bytes and mime_type:
         contents.append(
@@ -244,14 +263,68 @@ def check_rule_engine(question: str):
     """
     Rule-based engine.
     Returns:
-        dict  -> if a rule matches
-        None  -> if no rule matches
+        dict -> if a rule matches
+        None -> if no rule matches
     """
 
     question = question.lower().strip()
-
     question = re.sub(r"[^a-z0-9 ]", " ", question)
     question = " ".join(question.split())
+
+    rules = [
+
+    {
+    "keywords": ["database", "mysql"],
+    "answer": "Database configuration is available in config/database.php."
+    },
+
+    {
+    "keywords": ["route", "routes"],
+    "answer": "Routes are defined in routes/web.php."
+    },
+
+    {
+    "keywords": ["controller"],
+    "answer": "Controllers are stored in app/Http/Controllers."
+    },
+
+    {
+    "keywords": ["model"],
+    "answer": "Models are stored in app/Models."
+    },
+
+    {
+    "keywords": ["middleware"],
+    "answer": "Middleware classes are located in app/Http/Middleware."
+    },
+
+    {
+    "keywords": ["migration"],
+    "answer": "Database migrations are located in database/migrations."
+    },
+
+    {
+    "keywords": ["view", "blade"],
+    "answer": "Blade templates are stored in resources/views."
+    },
+
+    {
+    "keywords": ["invoice"],
+    "answer": "Invoice-related functionality is handled by the Invoice module."
+    }
+    for rule in rules:
+
+        for keyword in rule["keywords"]:
+
+            if keyword in question:
+
+                return {
+                    "matched": True,
+                    "answer": rule["answer"],
+                    "keyword": keyword
+                }
+
+    return None
 
 def query_rag(
     rag_components,
@@ -259,7 +332,8 @@ def query_rag(
     use_cache=True,
     media_bytes=None,
     mime_type=None,
-):
+    ):
+    
     """
     Return an answer using:
     1. Rule Engine
@@ -317,13 +391,12 @@ def query_rag(
     # ------------------------------------------------------------
     # Retrieve documents from FAISS
     # ------------------------------------------------------------
-    documents = vectorstore.max_marginal_relevance_search(
-        question,
-        k=k,
-        fetch_k=max(24, k * 3),
-        lambda_mult=0.7,
-    )
-
+documents = vectorstore.max_marginal_relevance_search(
+    question,
+    k=k,
+    fetch_k=max(40, k * 4),
+    lambda_mult=0.6,
+)
     source_files = list(
         dict.fromkeys(
             doc.metadata.get("source", "Unknown")
@@ -354,13 +427,13 @@ def query_rag(
     # ------------------------------------------------------------
     if not documents:
 
-        return (
-            "I couldn't find this information in the PHP project.",
-            [],
-            [],
-            False,
-            None,
-        )
+return (
+    rule["answer"],
+    ["Rule Engine"],
+    [],
+    False,
+    None,
+    )
 
     # ------------------------------------------------------------
     # Build prompt
@@ -414,9 +487,10 @@ def query_rag(
 
         cache = load_answer_cache()
 
-        cache[cache_key] = {
-            "question": question,
-            "answer": answer,
-        }
-
+cache[cache_key] = {
+    "question": question,
+    "answer": answer,
+    "model": GEMINI_MODEL,
+    "sources": source_files,
+    }
         save_answer_cache(cache)
