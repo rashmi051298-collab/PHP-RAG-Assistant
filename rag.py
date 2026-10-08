@@ -451,7 +451,7 @@ def check_rule_engine(question: str):
 
         for keyword in rule["keywords"]:
 
-            if keyword in question:
+            if re.search(rf"\b{re.escape(keyword)}\b", question):
 
                 return {
                     "matched": True,
@@ -473,32 +473,18 @@ def query_rag(
     Query the PHP RAG Assistant.
 
     Pipeline:
-    1. Rule Engine
-    2. Cache
-    3. FAISS Retrieval
-    4. Gemini
-    5. Save Cache
+    1. Cache
+    2. Demo Mode
+    3. Rule Engine
+    4. FAISS Retrieval
+    5. Gemini
+    6. Save Cache
     """
 
     vectorstore = rag_components["vectorstore"]
     vectorstore_path = rag_components["vectorstore_path"]
     mock_mode = rag_components["mock_mode"]
     k = rag_components["k"]
-
-    # ============================================================
-    # 1. Rule Engine
-    # ============================================================
-
-    rule = check_rule_engine(question or "")
-
-    if rule:
-        return (
-            rule["answer"],
-            ["Rule Engine"],
-            [],
-            False,
-            None,
-        )
 
     # ============================================================
     # 2. Cache
@@ -509,11 +495,23 @@ def query_rag(
         vectorstore_path,
     )
 
-    if use_cache and not mock_mode and not media_bytes:
+    if (use_cache or mock_mode) and not media_bytes:
 
         cache = load_answer_cache()
 
         cached_item = cache.get(cache_key)
+
+        if cached_item is None and question:
+            normalized_question = " ".join(question.lower().split())
+            cached_item = next(
+                (
+                    item
+                    for item in cache.values()
+                    if " ".join(item.get("question", "").lower().split())
+                    == normalized_question
+                ),
+                None,
+            )
 
         if cached_item:
 
@@ -530,7 +528,40 @@ def query_rag(
             )
 
     # ============================================================
-    # 3. Retrieve Documents
+    # 3. Demo Mode
+    # ============================================================
+
+    if mock_mode:
+        answer = (
+            "Demo Mode is enabled. "
+            "Gemini was not contacted."
+        )
+
+        return (
+            answer,
+            [],
+            [],
+            False,
+            None,
+        )
+
+    # ============================================================
+    # 4. Rule Engine
+    # ============================================================
+
+    rule = check_rule_engine(question or "")
+
+    if rule:
+        return (
+            rule["answer"],
+            ["Rule Engine"],
+            [],
+            False,
+            None,
+        )
+
+    # ============================================================
+    # 5. Retrieve Documents
     # ============================================================
 
     documents = vectorstore.max_marginal_relevance_search(
@@ -546,25 +577,6 @@ def query_rag(
             for doc in documents
         )
     )
-
-    # ============================================================
-    # Demo Mode
-    # ============================================================
-
-    if mock_mode:
-
-        answer = (
-            "Demo Mode is enabled. "
-            "Gemini was not contacted."
-        )
-
-        return (
-            answer,
-            source_files,
-            documents,
-            False,
-            None,
-        )
 
     # ============================================================
     # No documents found
@@ -654,63 +666,3 @@ def query_rag(
         False,
         file_path,
     )
-    # ------------------------------------------------------------
-    # Build prompt
-    # ------------------------------------------------------------
-prompt = build_prompt(
-        question
-        if question
-        else "Analyze the attached media.",
-        format_context(documents),
-    )
-
-    # ------------------------------------------------------------
-    # Gemini
-    # ------------------------------------------------------------
-try:
-
-        answer = generate_answer(
-            rag_components["client"],
-            prompt,
-            media_bytes=media_bytes,
-            mime_type=mime_type,
-        )
-
-        if not answer.strip():
-            answer = "I couldn't generate an answer."
-
-except Exception as error:
-
-        error_message = str(error)
-
-        if (
-            "RESOURCE_EXHAUSTED" in error_message
-            or "429" in error_message
-            or "quota" in error_message.lower()
-        ):
-            raise GeminiQuotaError(
-                extract_retry_seconds(error_message)
-            ) from error
-
-        raise
-
-    # ------------------------------------------------------------
-    # Save generated PHP code
-    # ------------------------------------------------------------
-        file_path = save_generated_php_code(answer)
-
-    # ------------------------------------------------------------
-    # Save cache
-    # ------------------------------------------------------------
-        if use_cache and not media_bytes:
-
-            cache = load_answer_cache()
-
-        cache[cache_key] = {
-    "question": question,
-    "answer": answer,
-    "model": GEMINI_MODEL,
-    "sources": source_files,
-         }
-    
-        save_answer_cache(cache)

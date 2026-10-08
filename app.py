@@ -74,7 +74,10 @@ def main():
             "Use saved answers",
             value=True,
             disabled=mock_mode,
-            help="Repeated questions reuse earlier answers and do not call Gemini.",
+            help=(
+                "Repeated questions reuse earlier answers and do not call Gemini. "
+                "Demo Mode checks saved answers automatically."
+            ),
         )
 
         if st.button("🗑️ Clear History", use_container_width=True):
