@@ -495,7 +495,7 @@ def query_rag(
         vectorstore_path,
     )
 
-    if (use_cache or mock_mode) and not media_bytes:
+    if mock_mode or (use_cache and not media_bytes):
 
         cache = load_answer_cache()
 
