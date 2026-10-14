@@ -74,7 +74,10 @@ def main():
             "Use saved answers",
             value=True,
             disabled=mock_mode,
-            help="Repeated questions reuse earlier answers and do not call Gemini.",
+            help=(
+                "Repeated questions reuse earlier answers and do not call Gemini. "
+                "Demo Mode checks saved answers automatically."
+            ),
         )
 
         if st.button("🗑️ Clear History", use_container_width=True):
@@ -93,6 +96,14 @@ def main():
             for i, item in enumerate(list(cache.values())[-3:], start=1):
                 with st.expander(f"Q: {item['question'][:30]}..."):
                     st.write(item["answer"])
+
+        st.subheader("Example Prompts")
+        st.markdown("""
+- Explain how the login flow works across the PHP files.
+- Where is user input validated before database queries?
+- How do the controller and model work together when creating a user?
+- Generate a PHP function that follows this project's existing patterns.
+""")
 
         if st.button("🧹 Clear Saved Answers", use_container_width=True):
             clear_answer_cache()

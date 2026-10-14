@@ -193,6 +193,20 @@ streamlit run app.py
 
 ---
 
+# Asking About This Assistant
+
+The assistant can also explain its own implementation. Ask questions such as:
+
+- How is this PHP RAG Assistant built?
+- Explain the project architecture and technology stack.
+- What do FAISS, HuggingFace embeddings, and Gemini do in this assistant?
+
+The app includes implementation context for Gemini answers and returns a built-in
+overview for broad architecture questions. PHP code questions still retrieve relevant
+code from the indexed PHP project.
+
+---
+
 # Example Questions
 
 Explain LoginController
