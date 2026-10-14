@@ -378,6 +378,14 @@ Streaming responses
 
 ---
 
+# Skills Demonstrated
+
+- Retrieval-Augmented Generation and large language models
+- Prompt engineering, vector databases, and semantic search
+- AI-assisted code understanding and PHP analysis
+- Streamlit application and Python development
+- Git and GitHub workflows
+
 # Requirements
 
 Python 3.10+

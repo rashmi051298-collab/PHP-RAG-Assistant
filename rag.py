@@ -537,7 +537,10 @@ def check_rule_engine(question: str):
 
         for keyword in rule["keywords"]:
 
-            if question == keyword:
+            if question == keyword or (
+                " " in keyword
+                and re.search(rf"\b{re.escape(keyword)}\b", question)
+            ):
 
                 return {
                     "matched": True,
@@ -572,21 +575,6 @@ def query_rag(
     k = rag_components["k"]
 
     # ============================================================
-    # 1. Rule Engine
-    # ============================================================
-
-    rule = check_rule_engine(question or "")
-
-    if rule:
-        return (
-            rule["answer"],
-            ["Rule Engine"],
-            [],
-            False,
-            None,
-        )
-
-    # ============================================================
     # 2. Cache
     # ============================================================
 
@@ -595,7 +583,7 @@ def query_rag(
         vectorstore_path,
     )
 
-    if (use_cache or mock_mode) and not media_bytes:
+    if mock_mode or (use_cache and not media_bytes):
 
         cache = load_answer_cache()
 
@@ -628,6 +616,26 @@ def query_rag(
                 file_path,
             )
 
+    if mock_mode:
+        return (
+            "Demo Mode is enabled. Gemini was not contacted.",
+            [],
+            [],
+            False,
+            None,
+        )
+
+    rule = check_rule_engine(question or "")
+
+    if rule:
+        return (
+            rule["answer"],
+            ["Rule Engine"],
+            [],
+            False,
+            None,
+        )
+
     # ============================================================
     # 3. Retrieve Documents
     # ============================================================
@@ -645,25 +653,6 @@ def query_rag(
             for doc in documents
         )
     )
-
-    # ============================================================
-    # Demo Mode
-    # ============================================================
-
-    if mock_mode:
-
-        answer = (
-            "Demo Mode is enabled. "
-            "Gemini was not contacted."
-        )
-
-        return (
-            answer,
-            source_files,
-            documents,
-            False,
-            None,
-        )
 
     # ============================================================
     # 4. Build Prompt
