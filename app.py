@@ -22,6 +22,9 @@ def init_session_state():
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
+    if "prompt_widget_generation" not in st.session_state:
+        st.session_state.prompt_widget_generation = 0
+
 
 def load_rag_system(k, mock_mode):
     """Load FAISS and, unless in Demo Mode, the Gemini client."""
@@ -85,6 +88,7 @@ def main():
 
         if st.button("🗑️ Clear History", use_container_width=True):
             st.session_state.messages = []
+            st.session_state.prompt_widget_generation += 1
             st.rerun()
 
         st.divider()
@@ -162,13 +166,18 @@ PHP code/project generation uses Gemini; explanations use NVIDIA NIM.
     with tab_chat:
         display_chat_history()
 
+        prompt_widget_key = st.session_state.prompt_widget_generation
         uploaded_file = st.file_uploader(
             "Upload an image, video, or document prompt",
-            type=["png", "jpg", "jpeg", "mp4", "mov", "txt", "php"]
+            type=["png", "jpg", "jpeg", "mp4", "mov", "txt", "php"],
+            key=f"prompt_upload_{prompt_widget_key}",
         )
-        question = st.text_input("Ask a question or describe what you need")
+        question = st.chat_input(
+            "Ask a question or describe what you need",
+            key=f"chat_prompt_{prompt_widget_key}",
+        )
 
-        if st.button("Go"):
+        if question is not None:
             media_bytes = None
             mime_type = None
 

@@ -147,7 +147,11 @@ class ProviderRoutingTests(unittest.TestCase):
             post.call_args.kwargs["json"]["model"],
             "nvidia/nemotron-3.5-lightning-30b-a3b",
         )
-        self.assertEqual(post.call_args.kwargs["timeout"], (10, 120))
+        self.assertEqual(
+            post.call_args.kwargs["json"]["chat_template_kwargs"],
+            {"enable_thinking": False},
+        )
+        self.assertEqual(post.call_args.kwargs["timeout"], (10, 300))
 
     def test_nvidia_request_failures_are_reported(self):
         with (
@@ -160,7 +164,7 @@ class ProviderRoutingTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(
                 RuntimeError,
-                "NVIDIA explanation request failed",
+                r"NVIDIA explanation request failed \(ConnectionError: offline\)",
             ):
                 rag.generate_nvidia_answer("prompt")
 

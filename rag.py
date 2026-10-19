@@ -404,9 +404,10 @@ def generate_nvidia_answer(prompt, media_bytes=None):
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.2,
                 "max_tokens": 2048,
+                "chat_template_kwargs": {"enable_thinking": False},
                 "stream": False,
             },
-            timeout=(10, 120),
+            timeout=(10, 300),
         )
         response.raise_for_status()
     except requests.RequestException as error:
@@ -419,6 +420,20 @@ def generate_nvidia_answer(prompt, media_bytes=None):
             "NVIDIA explanation request failed"
             + (f" with HTTP {status_code}" if status_code else "")
         )
+        error_detail = " ".join(str(error).split())[:300]
+        error_detail = re.sub(
+            r"(?i)\bBearer\s+\S+",
+            "Bearer [redacted]",
+            error_detail,
+        )
+        error_detail = re.sub(
+            r"(?i)(https?://)[^/@\s]+@",
+            r"\1[redacted]@",
+            error_detail,
+        )
+        if error_detail:
+            message += f" ({type(error).__name__}: {error_detail})"
+
         if status_code == 410:
             message += (
                 f" (Gone) for model {NVIDIA_MODEL}. That model or its hosted "
