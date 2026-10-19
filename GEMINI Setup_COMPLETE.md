@@ -1,6 +1,8 @@
-# ✅ Google Gemini Integration Complete!
+# ✅ Gemini + NVIDIA Model Routing
 
-All files have been modified to work with **Google Gemini + FAISS + BAAI BGE Embeddings**.
+PHP code and project generation use available Google Gemini text models. Explanations
+use NVIDIA NIM `nvidia/nemotron-3.5-lightning-30b-a3b`. FAISS and Hugging Face BAAI BGE
+embeddings remain the retrieval stack.
 
 ---
 
@@ -20,12 +22,9 @@ All files have been modified to work with **Google Gemini + FAISS + BAAI BGE Emb
 ---
 
 ### ✅ rag.py
-- ✓ Replaced: Ollama LLM → Google Gemini API
-- ✓ Added: Google GenAI client
-- ✓ Added: `generate_with_gemini()` function
-- ✓ Removed: `load_llm()`
-- ✓ Simplified: RAG pipeline using Gemini
-- ✓ Improved: Error handling and source retrieval
+- ✓ Routes code/project generation to available Gemini text-generation models
+- ✓ Falls back across supported Gemini 2.5–3.8 models on availability failures
+- ✓ Routes explanations to NVIDIA NIM
 
 ---
 
@@ -69,18 +68,21 @@ Create a free API key.
 
 ```powershell
 $env:GEMINI_API_KEY="YOUR_API_KEY"
+$env:NVIDIA_API_KEY="YOUR_NVIDIA_API_KEY"
 ```
 
 ### Windows CMD
 
 ```cmd
 set GEMINI_API_KEY=YOUR_API_KEY
+set NVIDIA_API_KEY=YOUR_NVIDIA_API_KEY
 ```
 
 ### Linux / macOS
 
 ```bash
 export GEMINI_API_KEY=YOUR_API_KEY
+export NVIDIA_API_KEY=YOUR_NVIDIA_API_KEY
 ```
 
 ---
@@ -145,7 +147,8 @@ How does authentication work?
 Explain routes/web.php
 ```
 
-Gemini will answer using only the retrieved PHP project context.
+Explanations use NVIDIA NIM with retrieved repository context. PHP code generation
+uses Gemini and falls back across available text-generation models.
 
 ---
 
@@ -153,8 +156,8 @@ Gemini will answer using only the retrieved PHP project context.
 
 | Component | Before | After |
 |-----------|--------|-------|
-| LLM | Ollama | Google Gemini |
-| Model | Phi / Mistral | Gemini 3.6 Flash |
+| Code generation | Ollama | Google Gemini text models |
+| Explanations | Ollama | NVIDIA NIM |
 | Execution | Local | Cloud API |
 | API Required | No | Yes |
 | Local Model Download | Required | Not Required |
@@ -184,10 +187,9 @@ Retriever
       │
       ▼
 Relevant PHP Files
-      │
-      ▼
-Google Gemini 2.5 Flash
-      │
+      ├── PHP code/project generation → available Gemini text models
+      └── Explanations                → NVIDIA NIM
+                 │
       ▼
 Final Answer
 ```
@@ -198,10 +200,10 @@ Final Answer
 
 ```
 ✅ requirements.txt
-   Google Gemini dependencies
+   Gemini, NVIDIA-request, and RAG dependencies
 
 ✅ rag.py
-   Gemini + FAISS implementation
+   Gemini/NVIDIA routing + FAISS implementation
 
 ✅ app.py
    Streamlit UI
@@ -285,7 +287,7 @@ Subsequent responses are typically faster.
 
 Everything is configured to use:
 
-- ✅ Google Gemini 3.6 Flash
+- ✅ Gemini 2.5–3.8 text-generation fallback for code requests
 - ✅ FAISS Vector Store
 - ✅ BAAI BGE Embeddings
 - ✅ Streamlit Interface

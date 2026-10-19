@@ -25,7 +25,7 @@ def init_session_state():
 
 def load_rag_system(k, mock_mode):
     """Load FAISS and, unless in Demo Mode, the Gemini client."""
-    with st.spinner("Loading the PHP assistant..."):
+    with st.spinner("Loading the PHP Vibe Coding Assistant..."):
         st.session_state.rag_components = create_rag_chain(
             vectorstore_path=VECTORSTORE_PATH,
             k=k,
@@ -42,22 +42,25 @@ def display_chat_history():
 
 def main():
     st.set_page_config(
-        page_title="PHP RAG Assistant",
+        page_title="PHP Vibe Coding Assistant",
         page_icon="💻",
         layout="wide",
     )
 
     init_session_state()
 
-    st.title("💬 PHP RAG Assistant")
-    st.caption("Ask questions about your PHP project, upload multimodal prompts, and download generated PHP files.")
+    st.title("💬 PHP Vibe Coding Assistant")
+    st.caption(
+        "Ask anything about PHP, generate and download PHP code, "
+        "or build a complete project to match your requirements."
+    )
 
     # Move all controls and settings into the sidebar to keep the chat front and center
     with st.sidebar:
         st.subheader("Controls")
 
         k = st.slider(
-            "Code sections to search",
+            "Knowledge chunks to search",
             min_value=4,
             max_value=12,
             value=DEFAULT_K,
@@ -67,7 +70,7 @@ def main():
         mock_mode = st.checkbox(
             "Demo Mode",
             value=False,
-            help="Test the interface without calling Gemini or using API quota.",
+            help="Test the interface without calling Gemini or NVIDIA APIs.",
         )
 
         use_cache = st.checkbox(
@@ -99,10 +102,10 @@ def main():
 
         st.subheader("Example Prompts")
         st.markdown("""
-- Explain how the login flow works across the PHP files.
-- Where is user input validated before database queries?
-- How do the controller and model work together when creating a user?
-- Generate a PHP function that follows this project's existing patterns.
+- Summarize this repository's architecture.
+- Where is user input validated before it is processed?
+- Generate a secure PHP REST API for managing products.
+- Build a complete PHP project with authentication, tests, and setup instructions.
 """)
 
         if st.button("🧹 Clear Saved Answers", use_container_width=True):
@@ -118,13 +121,15 @@ def main():
 
         st.subheader("How to Use")
         st.markdown("""
-1. Upload image, video, or text prompt (optional).
-2. Type your question or request code.
-3. Download generated PHP files directly.
+1. Ask a text question or upload an optional prompt.
+2. Ask a PHP question, request code, or describe a complete project.
+3. Download generated PHP files or a multi-file project ZIP.
+
+PHP code/project generation uses Gemini; explanations use NVIDIA NIM.
 """)
 
         if mock_mode:
-            st.info("Demo Mode: Gemini is not used.")
+            st.info("Demo Mode: AI providers are not called.")
         elif st.session_state.rag_components:
             st.success("✓ Assistant ready")
         else:
@@ -194,14 +199,23 @@ def main():
                     # show assistant answer
                     st.markdown(answer)
 
-                    # If the model generated PHP code, provide a download link
+                    # Generated multi-file projects are packaged as ZIP archives.
                     if generated_file_path and os.path.exists(generated_file_path):
+                        is_project_archive = generated_file_path.lower().endswith(".zip")
                         with open(generated_file_path, "rb") as f:
                             st.download_button(
-                                label="📥 Download Generated PHP File",
+                                label=(
+                                    "📦 Download Generated PHP Project"
+                                    if is_project_archive
+                                    else "📥 Download Generated PHP File"
+                                ),
                                 data=f,
                                 file_name=os.path.basename(generated_file_path),
-                                mime="text/plain"
+                                mime=(
+                                    "application/zip"
+                                    if is_project_archive
+                                    else "text/plain"
+                                ),
                             )
 
                     if from_cache:
@@ -232,7 +246,7 @@ def main():
                     st.write(item["answer"])
 
     st.divider()
-    st.caption("PHP RAG Assistant | Powered by Gemini, FAISS, and HuggingFace")
+    st.caption("Powered by Gemini, NVIDIA NIM, FAISS, and Hugging Face")
 
 
 if __name__ == "__main__":

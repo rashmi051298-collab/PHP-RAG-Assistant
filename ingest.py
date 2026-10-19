@@ -7,18 +7,118 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 EMBEDDING_MODEL = "BAAI/bge-base-en-v1.5"
-VECTORSTORE_PATH = "vectorstore"
+PROJECT_DIR = Path(__file__).resolve().parent
+VECTORSTORE_PATH = PROJECT_DIR / "vectorstore"
+DEFAULT_KNOWLEDGE_BASE_DIR = PROJECT_DIR
 
-# Change this only if your PHP source folder is elsewhere.
+SUPPORTED_EXTENSIONS = {
+    ".adoc",
+    ".c",
+    ".cc",
+    ".cfg",
+    ".conf",
+    ".cjs",
+    ".cpp",
+    ".cs",
+    ".css",
+    ".csv",
+    ".cxx",
+    ".dart",
+    ".ex",
+    ".exs",
+    ".go",
+    ".gql",
+    ".graphql",
+    ".h",
+    ".hcl",
+    ".hpp",
+    ".html",
+    ".ini",
+    ".ipynb",
+    ".java",
+    ".js",
+    ".jsx",
+    ".json",
+    ".jsonl",
+    ".kt",
+    ".lock",
+    ".markdown",
+    ".md",
+    ".mdown",
+    ".mdx",
+    ".php",
+    ".pl",
+    ".properties",
+    ".proto",
+    ".py",
+    ".r",
+    ".rb",
+    ".rs",
+    ".rst",
+    ".scala",
+    ".scss",
+    ".sh",
+    ".svelte",
+    ".sql",
+    ".swift",
+    ".tf",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".vue",
+    ".xml",
+    ".yaml",
+    ".yml",
+}
 
-PHP_SOURCE_DIR = Path(__file__).resolve().parent
+SUPPORTED_FILENAMES = {
+    ".dockerignore",
+    ".editorconfig",
+    ".env.example",
+    ".gitattributes",
+    ".gitignore",
+    "authors",
+    "brewfile",
+    "changelog",
+    "code_of_conduct",
+    "cmakelists.txt",
+    "contributing",
+    "dockerfile",
+    "gemfile",
+    "go.mod",
+    "go.sum",
+    "justfile",
+    "license",
+    "makefile",
+    "notice",
+    "pnpm-workspace.yaml",
+    "procfile",
+    "rakefile",
+    "readme",
+    "vagrantfile",
+    ".nvmrc",
+    ".prettierrc",
+    ".python-version",
+    ".ruby-version",
+}
 
 EXCLUDED_DIRECTORIES = {
-    "vendor",
-    "node_modules",
     ".git",
-    "vectorstore",
+    ".mypy_cache",
+    ".next",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
     "__pycache__",
+    "build",
+    "data",
+    "dist",
+    "generated_outputs",
+    "node_modules",
+    "venv",
+    "vendor",
+    "vectorstore",
 }
 
 
@@ -29,82 +129,119 @@ def get_embeddings():
         encode_kwargs={"normalize_embeddings": True},
     )
 
-def load_php_documents(source_dir: Path) -> list[Document]:
-    """Read PHP files while preserving their paths as metadata."""
+
+def is_supported_text_file(file_path: Path) -> bool:
+    """Return whether a repository file is a supported text/document format."""
+    return (
+        file_path.suffix.lower() in SUPPORTED_EXTENSIONS
+        or file_path.name.lower() in SUPPORTED_FILENAMES
+    )
+
+
+def load_knowledge_documents(source_dir: Path) -> list[Document]:
+    """Load supported text files while preserving repository paths as metadata."""
     if not source_dir.exists():
-        raise FileNotFoundError(f"PHP source directory was not found: {source_dir}")
+        raise FileNotFoundError(
+            f"Knowledge base directory was not found: {source_dir}"
+        )
+    if not source_dir.is_dir():
+        raise NotADirectoryError(
+            f"Knowledge base path is not a directory: {source_dir}"
+        )
 
     documents = []
 
-    for php_file in source_dir.rglob("*.php"):
-        if any(part in EXCLUDED_DIRECTORIES for part in php_file.parts):
-            continue
+    def raise_walk_error(error):
+        raise error
 
-        try:
-            content = php_file.read_text(encoding="utf-8", errors="ignore").strip()
-        except OSError as error:
-            print(f"Skipping {php_file}: {error}")
-            continue
+    for current_root, directory_names, file_names in os.walk(
+        source_dir,
+        topdown=True,
+        onerror=raise_walk_error,
+    ):
+        directory_names[:] = [
+            name
+            for name in directory_names
+            if name.lower() not in EXCLUDED_DIRECTORIES
+        ]
 
-        if not content:
-            continue
+        for file_name in file_names:
+            source_file = Path(current_root) / file_name
+            if not is_supported_text_file(source_file):
+                continue
 
-        relative_path = php_file.relative_to(source_dir).as_posix()
-        documents.append(
-            Document(
-                page_content=content,
-                metadata={
-                    "source": relative_path,
-                    "file_name": php_file.name,
-                    "language": "php",
-                },
+            normalized_name = source_file.name.lower()
+            if normalized_name == ".env" or (
+                normalized_name.startswith(".env.")
+                and normalized_name != ".env.example"
+            ):
+                continue
+
+            try:
+                content = source_file.read_text(
+                    encoding="utf-8",
+                    errors="replace",
+                ).strip()
+            except OSError as error:
+                print(f"Skipping {source_file}: {error}")
+                continue
+
+            if not content or "\x00" in content:
+                continue
+
+            relative_source = source_file.relative_to(source_dir).as_posix()
+            documents.append(
+                Document(
+                    page_content=content,
+                    metadata={
+                        "source": relative_source,
+                        "file_name": source_file.name,
+                        "file_type": source_file.suffix.lower() or "text",
+                    },
+                )
             )
-        )
 
     return documents
 
 
-def get_php_splitter():
-    """Split PHP around useful code boundaries before falling back to smaller text."""
+def get_knowledge_splitter():
+    """Split repository text into overlapping chunks for semantic retrieval."""
     return RecursiveCharacterTextSplitter(
         chunk_size=1400,
         chunk_overlap=250,
         keep_separator="start",
-        separators=[
-            "\n<?php",
-            "\nnamespace ",
-            "\nuse ",
-            "\nclass ",
-            "\ninterface ",
-            "\ntrait ",
-            "\nenum ",
-            "\npublic function ",
-            "\nprotected function ",
-            "\nprivate function ",
-            "\nfunction ",
-            "\n\n",
-            "\n",
-            " ",
-            "",
-        ],
+        separators=["\n\n", "\n", " ", ""],
     )
 
 
+def get_knowledge_base_dir() -> Path:
+    """Resolve the corpus directory from the environment or the default location."""
+    configured_path = os.getenv("KNOWLEDGE_BASE_DIR")
+    source_dir = Path(configured_path) if configured_path else DEFAULT_KNOWLEDGE_BASE_DIR
+    if not source_dir.is_absolute():
+        source_dir = PROJECT_DIR / source_dir
+    return source_dir.resolve()
+
+
 def main():
-    print(f"Reading PHP files from: {PHP_SOURCE_DIR}")
-    documents = load_php_documents(PHP_SOURCE_DIR)
+    source_dir = get_knowledge_base_dir()
+    print(f"Reading repository knowledge files from: {source_dir}")
+    documents = load_knowledge_documents(source_dir)
 
     if not documents:
-        raise RuntimeError("No PHP files were found to ingest.")
+        raise RuntimeError(
+            "No supported text files were found in the selected knowledge base: "
+            f"{source_dir}"
+        )
 
-    chunks = get_php_splitter().split_documents(documents)
+    chunks = get_knowledge_splitter().split_documents(documents)
 
-    print(f"Loaded {len(documents)} PHP files.")
-    print(f"Created {len(chunks)} PHP code chunks.")
+    print(f"Loaded {len(documents)} knowledge files.")
+    print(f"Created {len(chunks)} text chunks.")
     print(f"Creating embeddings with: {EMBEDDING_MODEL}")
 
     vectorstore = FAISS.from_documents(chunks, get_embeddings())
-    vectorstore.save_local(VECTORSTORE_PATH)
+    vectorstore.save_local(str(VECTORSTORE_PATH))
 
     print(f"Vector store successfully saved to: {VECTORSTORE_PATH}")
 

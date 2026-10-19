@@ -37,7 +37,7 @@ Your PHP RAG Assistant has been successfully structured into a professional, mod
 ### **Project Structure** (2 directories)
 
 ```
-✅ data/laravel-crm-2.2/        - For your PHP source files
+✅ Current repository root     - Default knowledge base
 ✅ vectorstore/                 - For FAISS vectors (auto-created)
 ```
 
@@ -61,7 +61,7 @@ Your PHP RAG Assistant has been successfully structured into a professional, mod
 │                                                             │
 │  DATA LAYER                 PROCESSING LAYER                │
 │  ──────────                 ────────────────                │
-│  PHP Files          ───→    ingest.py      ───→            │
+│  Repository Files  ───→    ingest.py      ───→            │
 │  (data/)                   (Load & Split)      FAISS        │
 │                                            Vectorstore      │
 │                                                   ↓         │
@@ -97,24 +97,17 @@ What this does:
 - Creates data directories
 - Activates virtual environment
 
-### **Step 2: Add Your PHP Files** (varies)
+### **Step 2: Use the Current Local Repository**
 
-Copy your Laravel/PHP project to:
-```
-data/laravel-crm-2.2/
-├── app/
-├── routes/
-├── config/
-├── database/
-└── ... (all your files)
-```
+The current project checkout is the default knowledge base. No clone or copy is
+needed. Set `KNOWLEDGE_BASE_DIR` only if you want to index a different local checkout.
 
 ### **Step 3: Process & Launch** (5-15 minutes)
 
 ```bash
 # Make sure venv is activated first
 
-# Create vector store from your PHP files
+# Create vector store from repository files
 python ingest.py
 
 # Launch the web interface
@@ -150,7 +143,7 @@ PHP_RAG_Assistant/
 │
 ├── 📁 DATA DIRECTORIES
 │   ├── data/
-│   │   └── laravel-crm-2.2/      ← Add your PHP files here
+│   │   └── laravel-crm-2.2/      ← Legacy corpus; excluded from ingestion
 │   │
 │   └── vectorstore/              ← Created after ingest.py
 │       ├── index.faiss
@@ -280,7 +273,7 @@ PHP_RAG_Assistant/
 - [ ] All dependencies installed successfully
 
 **Data Phase:**
-- [ ] Copy PHP files to data/laravel-crm-2.2/
+- [ ] Use the current local repository as the knowledge base
 - [ ] Verify files are readable
 - [ ] Run python ingest.py
 - [ ] See "Vector store saved successfully"
@@ -301,14 +294,14 @@ source venv/bin/activate  # macOS/Linux
 venv\Scripts\activate     # Windows
 ```
 
-### **Q: Where do I put my PHP files?**
-**A:** In `data/laravel-crm-2.2/` - copy your entire project there.
+### **Q: Which repository is indexed?**
+**A:** The current local project root, or the local path configured in `KNOWLEDGE_BASE_DIR`.
 
 ### **Q: Does it work without GPU?**
 **A:** Yes! Uses CPU but slower. GPU (~3x faster) runs better queries.
 
 ### **Q: How long does ingest take?**
-**A:** 5-15 minutes for ~100 PHP files. Depends on file size.
+**A:** 5-15 minutes for ~100 supported repository files. Depends on file size.
 
 ### **Q: Can I change the LLM model?**
 **A:** Yes! Edit `rag.py` or sidebar → Model Settings → Select different model.
@@ -357,7 +350,7 @@ All steps print detailed progress messages. Look for:
 **Immediate (Right Now):**
 1. Read QUICKSTART.md (5 minutes)
 2. Run python setup.py
-3. Copy your PHP files to data/laravel-crm-2.2/
+3. Use the current checkout as the knowledge base (default)
 
 **Short Term (Today):**
 1. Run python ingest.py to create vectorstore
@@ -410,9 +403,9 @@ All steps print detailed progress messages. Look for:
 
 ## 🎉 Congratulations!
 
-Your PHP RAG Assistant is complete, documented, and ready to deploy! 
+Your repository knowledge assistant is complete, documented, and ready to deploy!
 
-**The project is production-ready. Just add your PHP files and follow the Quick Start guide.**
+**Add a local GitHub repository to the knowledge base and follow the Quick Start guide.**
 
 ---
 

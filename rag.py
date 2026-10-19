@@ -9,49 +9,62 @@ import json
 import math
 import os
 import re
+import requests
+import zipfile
 from pathlib import Path
+from pathlib import PurePosixPath, PureWindowsPath
 from google import genai
 from google.genai import types
-from google.genai.errors import ServerError
+from google.genai.errors import APIError, ServerError
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 
 EMBEDDING_MODEL = "BAAI/bge-base-en-v1.5"
-GEMINI_MODEL = "models/gemini-3.6-flash"
-ANSWER_VERSION = "general-php-v2"
+GEMINI_MODEL_RANGE = "2.5-3.8"
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "nvidia/nemotron-3.5-lightning-30b-a3b")
+NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
+ANSWER_VERSION = "php-vibe-coding-v2"
 DEFAULT_K = 12
+MAX_PROJECT_FILES = 50
+MAX_PROJECT_FILE_BYTES = 512 * 1024
+MAX_PROJECT_TOTAL_BYTES = 2 * 1024 * 1024
+MAX_OUTPUT_TOKENS = 8192
 
 ASSISTANT_IMPLEMENTATION_CONTEXT = """
-This PHP RAG Assistant is a Python application with a Streamlit chat UI (app.py).
-ingest.py reads PHP files, splits them into 1,400-character chunks with 250-character
-overlap, creates normalized embeddings with HuggingFace's BAAI/bge-base-en-v1.5
+This PHP Vibe Coding Assistant is a Python application with a Streamlit chat
+UI (app.py). ingest.py reads supported text and documentation files from the
+configured knowledge base, splits them into 1,400-character chunks with 250-character
+overlap, creates normalized embeddings with Hugging Face's BAAI/bge-base-en-v1.5
 model, and saves a LangChain FAISS vectorstore under vectorstore/. At query time,
-rag.py retrieves relevant PHP chunks with FAISS maximum marginal relevance (MMR)
-and sends those chunks and the question to Google's Gemini Flash model using the
-google-genai SDK. The app supports local answer caching, optional image/video input,
-Demo Mode, and saving generated PHP code for download. Questions about the assistant
-itself should use these implementation details; questions about the user's PHP
-application should use the retrieved PHP source context.
+rag.py retrieves relevant repository chunks with FAISS maximum marginal relevance
+(MMR). Code-generation requests use available Gemini text models; explanations use
+NVIDIA NIM. The app supports local answer caching, optional image/video input, Demo
+Mode, and downloading generated PHP files or multi-file projects.
+Questions about the assistant itself should use these implementation details;
+questions about the indexed repository should use retrieved file context.
 """
 
 PROJECT_OVERVIEW_ANSWER = """\
-## How this PHP RAG Assistant is built
+## How this PHP Vibe Coding Assistant is built
 
 - **Python and Streamlit** provide the application logic and chat interface (`app.py`).
-- **PHP ingestion** (`ingest.py`) reads PHP files and splits them into 1,400-character
-  chunks with 250-character overlap so code around chunk boundaries remains available.
-- **HuggingFace embeddings** use `BAAI/bge-base-en-v1.5` to represent each code chunk
-  as a normalized vector.
+- **Repository ingestion** (`ingest.py`) reads supported text, source-code, and
+  documentation files and splits them into 1,400-character chunks with 250-character
+  overlap.
+- **Hugging Face embeddings** use `BAAI/bge-base-en-v1.5` to represent each chunk as
+  a normalized vector.
 - **LangChain and FAISS** store those vectors locally in `vectorstore/`. For a question,
-  FAISS uses maximum marginal relevance (MMR) to retrieve relevant, varied PHP chunks.
-- **Google Gemini Flash** receives the question and retrieved PHP context through the
-  `google-genai` SDK and generates the explanation or requested PHP code.
+  FAISS uses maximum marginal relevance (MMR) to retrieve relevant, varied chunks.
+- **Provider routing** sends PHP code/project generation to available Gemini text
+  models and explanations to NVIDIA NIM.
+- **Code generation** can return a single PHP file or a multi-file project ZIP.
 - **Local answer caching** avoids another model request for repeated questions. The app
-  also supports Demo Mode, optional image/video input, and PHP code downloads.
+  also supports Demo Mode and optional image/video input.
 
-The flow is: PHP files → chunks → embeddings → FAISS index → question → relevant PHP
-context → Gemini answer. Questions about the assistant's own architecture use the
-implementation details above; PHP code questions still search the indexed PHP project.
+The flow is: repository files → chunks → embeddings → FAISS index → question →
+relevant context → Gemini for code or NVIDIA for explanations. Questions about the
+assistant's own architecture use the implementation details above; repository
+questions search the indexed files.
 """
 
 # ============================================================
@@ -106,15 +119,9 @@ def load_vectorstore(vectorstore_path="vectorstore"):
 
 
 def load_gemini_client():
-    """Create the Gemini client using the PowerShell environment variable."""
+    """Create the Gemini client when a key is configured."""
     api_key = os.getenv("GEMINI_API_KEY")
-
-    if not api_key:
-        raise RuntimeError(
-            "GEMINI_API_KEY is not set. Restart PowerShell and set your Gemini key."
-        )
-
-    return genai.Client(api_key=api_key)
+    return genai.Client(api_key=api_key) if api_key else None
 
 
 def load_answer_cache():
@@ -146,7 +153,7 @@ def clear_answer_cache():
         CACHE_FILE.unlink()
 
 
-def make_cache_key(question, vectorstore_path):
+def make_cache_key(question, vectorstore_path, provider="gemini"):
     """
     Create a cache key based on the question, model, and current FAISS index.
     Rebuilding the vectorstore automatically makes old cached answers unused.
@@ -161,7 +168,8 @@ def make_cache_key(question, vectorstore_path):
     normalized_question = " ".join(question.lower().split())
 
     cache_input = (
-        f"{ANSWER_VERSION}|{GEMINI_MODEL}|{EMBEDDING_MODEL}|"
+        f"{ANSWER_VERSION}|{provider}|{GEMINI_MODEL_RANGE}|{NVIDIA_MODEL}|"
+        f"{EMBEDDING_MODEL}|"
         f"{index_version}|{normalized_question}"
     )
 
@@ -169,14 +177,14 @@ def make_cache_key(question, vectorstore_path):
 
 
 def format_context(documents):
-    """Format retrieved PHP chunks for Gemini."""
+    """Format retrieved repository chunks for the selected language model."""
     sections = []
 
     for number, document in enumerate(documents, start=1):
-        source = document.metadata.get("source", "Unknown PHP file")
+        source = document.metadata.get("source", "Unknown repository file")
 
         sections.append(
-            f"--- PHP source {number}: {source} ---\n"
+            f"--- Repository source {number}: {source} ---\n"
             f"{document.page_content}"
         )
 
@@ -184,26 +192,36 @@ def format_context(documents):
 
 
 def build_prompt(question, context):
-    """Create the Gemini prompt with support for informational answers or PHP code generation."""
+    """Create the provider-neutral prompt for questions and PHP project generation."""
     return f"""
-You are an expert Senior PHP Developer, Software Architect and Code Reviewer.
+You are a senior PHP engineer, software architect, and technical documentation assistant.
 
 Your responsibilities are:
 
-• Answer questions about either the PHP assistant implementation or the supplied PHP project.
-• Explain code clearly.
-- Answer general PHP and software engineering questions using your knowledge, even when no project files are relevant.
-- Generate production-ready PHP code when requested, following secure defaults, clear validation and error handling, and current PHP conventions.
-- Never present assumptions or general recommendations as facts about the user's project.
-- For questions about the assistant, use the assistant implementation context below.
-- For questions about the user's PHP project, use retrieved PHP context as evidence; if it does not contain the answer, say so and offer general guidance separately when useful.
-• Mention source files whenever possible.
-• When generating PHP code, wrap it in a fenced code block labeled `php`.
+• Answer questions about the assistant or the supplied repository and its documentation.
+• Explain source code and technical material clearly.
+• Use retrieved repository context as evidence for repository-specific claims and cite file paths whenever possible.
+• If the retrieved context does not answer a repository-specific question, say so instead of inventing project facts.
+• You may provide general software engineering guidance, clearly distinguishing it from facts found in the repository.
+• Generate maintainable, production-minded PHP code using secure defaults, input validation,
+  authorization checks where appropriate, safe database access, and explicit error handling.
+• For a request to build a complete project, provide a coherent runnable project, not just
+  a sketch. Include appropriate application files, safe configuration examples, database
+  changes when needed, tests, and setup/run instructions.
+• Do not claim generated code is production-ready or tested unless it has actually been
+  reviewed and run. State assumptions and external setup requirements.
+• For a single PHP file, provide one fenced `php` code block.
+• For a multi-file project, put every file in its own fenced block using this exact header:
+  `file path=relative/path/from/project/root`
+  Example header: `file path=public/index.php`
+  Never use absolute paths or `..` path segments. Include each file's complete contents.
+• Keep project file blocks separate from explanatory prose, and include a concise file
+  tree plus instructions for installing, configuring, running, and testing the project.
 
 ASSISTANT IMPLEMENTATION CONTEXT:
 {ASSISTANT_IMPLEMENTATION_CONTEXT}
 
-PHP PROJECT CONTEXT:
+REPOSITORY CONTEXT:
 {context}
 
 USER REQUEST / QUESTION:
@@ -227,36 +245,113 @@ def extract_retry_seconds(error_message):
     return None
 
 
-@retry(
-    retry=retry_if_exception_type(ServerError),
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=8),
-    reraise=True,
-)
-def _generate_content_with_retry(client, model, contents):
-    return client.models.generate_content(
-        model=model,
-        contents=contents,
-        config=types.GenerateContentConfig(
-            temperature=0.2,
-            max_output_tokens=1500,
-        ),
+def is_code_generation_request(question):
+    """Identify requests that ask the assistant to create or change code."""
+    question = question or ""
+    starts_with_explanation = re.match(
+        r"\s*(?:explain|describe|tell me|what|how|why|where|when|"
+        r"compare|summarize|review)\b",
+        question,
+        flags=re.IGNORECASE,
+    )
+    explicit_code_action = re.search(
+        r"\b(?:generate|write|create|implement|scaffold|refactor|fix|"
+        r"debug|modify|update|add|convert)\b"
+        r".{0,100}\b(?:php|code|class|function|file|website|web\s+app|"
+        r"application|project|api|script|feature|module|endpoint|site|"
+        r"bug|error|issue)\b",
+        question,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if starts_with_explanation and not explicit_code_action:
+        return False
+    if starts_with_explanation:
+        return bool(
+            re.search(
+                r"\b(?:and|then)\s+(?:please\s+)?"
+                r"(?:generate|write|create|implement|scaffold|refactor|"
+                r"fix|debug|modify|update|add|convert|make|build)\b",
+                question,
+                flags=re.IGNORECASE,
+            )
+        )
+
+    return bool(
+        re.search(
+            r"\b(?:generate|write|create|build|implement|scaffold|"
+            r"refactor|fix|debug|modify|update|add|convert|make)\b"
+            r".{0,100}\b(?:php|code|class|function|file|website|web\s+app|"
+            r"application|project|api|script|feature|module|endpoint|"
+            r"site|bug|error|issue)\b"
+            r"|\b(?:show|give|provide)\s+(?:me\s+)?"
+            r"(?:the\s+)?(?:php\s+)?(?:code|function|class|script|project|app)\b"
+            r"|\bcode\s+for\s+(?:a|an|the|my)\b"
+            r"|\b(?:i|we)\s+(?:want|need)\s+(?:you\s+to\s+)?"
+            r"(?:a|an|the)?\s*(?:php\s+)?"
+            r"(?:app|application|project|website|site|api|script|"
+            r"feature|module)\b",
+            question,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
     )
 
 
-def generate_answer(client, prompt, media_bytes=None, mime_type=None):
-    """
-    Generate an answer using Gemini, supporting optional multimodal inputs (image, video, text).
-    """
-    models = [
+def get_supported_gemini_models(client):
+    """List available text-generation models from Gemini 2.5 through 3.8."""
+    models = []
+    for model in client.models.list(
+        config=types.ListModelsConfig(page_size=1000)
+    ):
+        name = model.name or ""
+        model_id = name.removeprefix("models/")
+        version_match = re.match(
+            r"^gemini-(2\.5|3\.([0-8]))(?:-|$)",
+            model_id,
+            flags=re.IGNORECASE,
+        )
+        supported_actions = {
+            action.lower() for action in (model.supported_actions or [])
+        }
+        if not version_match or "generatecontent" not in supported_actions:
+            continue
 
-    # Primary model
-    "models/gemini-3.6-flash",
+        if re.search(
+            r"(?:^|-)(?:image|live|tts|transcribe|embedding|aqa)(?:-|$)",
+            model_id,
+            flags=re.IGNORECASE,
+        ):
+            continue
+        models.append((version_match, model_id, name))
 
-    # Fallback model
-    "models/gemini-3.5-flash",
+    def sort_key(item):
+        match, model_id, _ = item
+        family = match.group(1)
+        major, minor = (2, 5) if family == "2.5" else (3, int(match.group(2)))
+        model_variant = model_id.lower()
+        if "pro" in model_variant:
+            priority = 3
+        elif "lite" in model_variant:
+            priority = 1
+        else:
+            priority = 2
+        return major, minor, priority, model_id
 
-    ]
+    return [name for _, _, name in sorted(models, key=sort_key, reverse=True)]
+
+
+def generate_gemini_answer(client, prompt, media_bytes=None, mime_type=None):
+    """Try currently available Gemini text-generation models in descending order."""
+    if client is None:
+        raise RuntimeError(
+            "GEMINI_API_KEY is not set. Add it to use Gemini for code generation."
+        )
+
+    models = get_supported_gemini_models(client)
+    if not models:
+        raise RuntimeError(
+            "No Gemini 2.5–3.8 text-generation models are available for this API key."
+        )
+
     contents = [prompt]
     if media_bytes and mime_type:
         contents.append(
@@ -270,27 +365,228 @@ def generate_answer(client, prompt, media_bytes=None, mime_type=None):
     for model in models:
         try:
             response = _generate_content_with_retry(client, model, contents)
-
-            return (response.text or "").strip()
-
-        except ServerError as error:
+            answer = (response.text or "").strip()
+            if answer:
+                return answer
+            last_error = RuntimeError(f"{model} returned an empty response.")
+        except APIError as error:
+            if error.code not in {404, 429, 500, 502, 503, 504}:
+                raise
             last_error = error
-            print(f"{model} is unavailable. Trying next model...")
+            print(f"{model} is unavailable (HTTP {error.code}); trying next Gemini model.")
 
     raise RuntimeError(
-        "All Gemini models are temporarily unavailable. Please try again shortly."
+        "All available Gemini text-generation models from 2.5 through 3.8 "
+        "are currently unavailable."
     ) from last_error
 
 
-def save_generated_php_code(answer):
-    """Extracts PHP code blocks from the answer and saves them to a file for downloading."""
+def generate_nvidia_answer(prompt, media_bytes=None):
+    """Generate a text explanation with NVIDIA's OpenAI-compatible NIM API."""
+    if media_bytes:
+        raise RuntimeError(
+            f"The configured NVIDIA model ({NVIDIA_MODEL}) accepts text prompts only. "
+            "Remove the attachment or configure a multimodal NVIDIA model."
+        )
+
+    api_key = os.getenv("NVIDIA_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "NVIDIA_API_KEY is not set. Add it to use NVIDIA for explanations."
+        )
+
+    try:
+        response = requests.post(
+            NVIDIA_API_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "model": NVIDIA_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.2,
+                "max_tokens": 2048,
+                "stream": False,
+            },
+            timeout=(10, 120),
+        )
+        response.raise_for_status()
+    except requests.RequestException as error:
+        status_code = (
+            error.response.status_code
+            if isinstance(error, requests.HTTPError) and error.response is not None
+            else None
+        )
+        message = (
+            "NVIDIA explanation request failed"
+            + (f" with HTTP {status_code}" if status_code else "")
+        )
+        if status_code == 410:
+            message += (
+                f" (Gone) for model {NVIDIA_MODEL}. That model or its hosted "
+                "inference service may have been retired. Select a currently "
+                "available model from NVIDIA's API Catalog and set NVIDIA_MODEL."
+            )
+        else:
+            message += ". Check NVIDIA_API_KEY, NVIDIA_MODEL, and API availability."
+
+        if isinstance(error, requests.HTTPError) and error.response is not None:
+            try:
+                error_payload = error.response.json()
+            except ValueError:
+                error_payload = error.response.text
+            if isinstance(error_payload, dict):
+                error_detail = error_payload.get("detail") or error_payload.get("error")
+                if isinstance(error_detail, dict):
+                    error_detail = (
+                        error_detail.get("message")
+                        or error_detail.get("detail")
+                        or error_detail.get("title")
+                    )
+            else:
+                error_detail = error_payload
+
+            if error_detail:
+                safe_detail = " ".join(str(error_detail).split())[:500]
+                message += f" NVIDIA response: {safe_detail}"
+
+        raise RuntimeError(message) from error
+
+    try:
+        answer = response.json()["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError, ValueError) as error:
+        raise RuntimeError(
+            "NVIDIA returned an unexpected chat-completions response."
+        ) from error
+
+    if not isinstance(answer, str) or not answer.strip():
+        raise RuntimeError("NVIDIA returned an empty explanation.")
+    return answer.strip()
+
+
+@retry(
+    retry=retry_if_exception_type(ServerError),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=2, max=8),
+    reraise=True,
+)
+def _generate_content_with_retry(client, model, contents):
+    return client.models.generate_content(
+        model=model,
+        contents=contents,
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            max_output_tokens=MAX_OUTPUT_TOKENS,
+        ),
+    )
+
+
+def generate_answer(
+    client,
+    prompt,
+    question,
+    media_bytes=None,
+    mime_type=None,
+):
+    """Route code-generation requests to Gemini and explanations to NVIDIA."""
+    if is_code_generation_request(question):
+        return generate_gemini_answer(
+            client,
+            prompt,
+            media_bytes=media_bytes,
+            mime_type=mime_type,
+        )
+    return generate_nvidia_answer(
+        prompt,
+        media_bytes=media_bytes,
+    )
+
+
+def _extract_generated_project_files(answer):
+    """Extract and validate path-labeled file blocks from a generated project."""
+    project_files = {}
     code_blocks = re.finditer(
         r"```([^\r\n`]*)\r?\n(.*?)```",
         answer,
         flags=re.DOTALL | re.IGNORECASE,
     )
 
-    code_content = None
+    for code_match in code_blocks:
+        header = code_match.group(1).strip()
+        path_match = re.fullmatch(
+            r"(?:file\s+)?(?:path|file)\s*=\s*(.+)",
+            header,
+            flags=re.IGNORECASE,
+        )
+        if not path_match:
+            continue
+
+        relative_path = path_match.group(1).strip().strip("\"'")
+        posix_path = PurePosixPath(relative_path.replace("\\", "/"))
+        windows_path = PureWindowsPath(relative_path)
+        if (
+            not relative_path
+            or posix_path.is_absolute()
+            or windows_path.is_absolute()
+            or windows_path.drive
+            or any(part in {"", ".", ".."} for part in posix_path.parts)
+        ):
+            raise ValueError(
+                f"Generated project contains an unsafe file path: {relative_path!r}"
+            )
+
+        normalized_path = posix_path.as_posix()
+        if normalized_path in project_files:
+            raise ValueError(
+                f"Generated project contains a duplicate file path: {normalized_path}"
+            )
+
+        content = code_match.group(2).strip()
+        content_size = len(content.encode("utf-8"))
+        if content_size > MAX_PROJECT_FILE_BYTES:
+            raise ValueError(
+                f"Generated project file exceeds the "
+                f"{MAX_PROJECT_FILE_BYTES // 1024} KiB limit: {normalized_path}"
+            )
+
+        project_files[normalized_path] = content
+        if len(project_files) > MAX_PROJECT_FILES:
+            raise ValueError(
+                f"Generated project exceeds the {MAX_PROJECT_FILES}-file limit."
+            )
+
+    total_size = sum(
+        len(content.encode("utf-8")) for content in project_files.values()
+    )
+    if total_size > MAX_PROJECT_TOTAL_BYTES:
+        raise ValueError(
+            "Generated project exceeds the "
+            f"{MAX_PROJECT_TOTAL_BYTES // (1024 * 1024)} MiB total size limit."
+        )
+
+    return project_files
+
+
+def save_generated_php_code(answer):
+    """Save a generated PHP file or package path-labeled project files as a ZIP."""
+    project_files = _extract_generated_project_files(answer)
+    generated_dir = PROJECT_DIR / "generated_outputs"
+    generated_dir.mkdir(exist_ok=True)
+
+    if project_files:
+        archive_path = generated_dir / "generated_php_project.zip"
+        with zipfile.ZipFile(
+            archive_path,
+            mode="w",
+            compression=zipfile.ZIP_DEFLATED,
+        ) as archive:
+            for relative_path, content in project_files.items():
+                archive.writestr(relative_path, content)
+        return str(archive_path)
+
+    code_blocks = re.finditer(
+        r"```([^\r\n`]*)\r?\n(.*?)```",
+        answer,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
     for code_match in code_blocks:
         language = code_match.group(1).strip().lower()
         candidate = code_match.group(2).strip()
@@ -299,18 +595,11 @@ def save_generated_php_code(answer):
             candidate,
         )
         if language == "php" or (not language and is_php_code):
-            code_content = candidate
-            break
+            file_path = generated_dir / "generated_solution.php"
+            file_path.write_text(candidate, encoding="utf-8")
+            return str(file_path)
 
-    if not code_content:
-        return None
-
-    generated_dir = PROJECT_DIR / "generated_outputs"
-    generated_dir.mkdir(exist_ok=True)
-    
-    file_path = generated_dir / "generated_solution.php"
-    file_path.write_text(code_content, encoding="utf-8")
-    return str(file_path)
+    return None
 
 def create_rag_chain(vectorstore_path="vectorstore", k=DEFAULT_K, mock_mode=False):
     """
@@ -341,9 +630,10 @@ def check_rule_engine(question: str):
     question = " ".join(question.split())
 
     refers_to_assistant = re.search(
-        r"\b(?:this|the|our)\s+(?:php\s+)?(?:rag\s+)?"
+        r"\b(?:this|the|our)\s+"
+        r"(?:(?:php\s+)?(?:rag\s+)?|repository\s+knowledge\s+|knowledge\s+base\s+)?"
         r"(?:assistant|project|system|application|app)\b"
-        r"|\bphp rag assistant\b",
+        r"|\b(?:php rag|repository knowledge|knowledge base) assistant\b",
         question,
     )
     asks_about_build_or_architecture = re.search(
@@ -367,7 +657,7 @@ def check_rule_engine(question: str):
 
         {
             "keywords": ["hello", "hi", "hey"],
-            "answer": "Hello! How can I help you with your PHP project today?"
+            "answer": "Hello! How can I help you with your repository today?"
         },
 
         {
@@ -396,25 +686,6 @@ def check_rule_engine(question: str):
         },
 
         # --------------------------------------------
-        # Project
-        # --------------------------------------------
-
-        {
-            "keywords": ["project"],
-            "answer": PROJECT_OVERVIEW_ANSWER
-        },
-
-        {
-            "keywords": ["php"],
-            "answer": "The project is developed in PHP."
-        },
-
-        {
-            "keywords": ["laravel"],
-            "answer": "This assistant is designed to understand Laravel/PHP projects."
-        },
-
-        # --------------------------------------------
         # AI
         # --------------------------------------------
 
@@ -425,12 +696,12 @@ def check_rule_engine(question: str):
 
         {
             "keywords": ["gemini"],
-            "answer": "Gemini 3.6 Flash is used as the Large Language Model."
+            "answer": "PHP code and project generation use available Gemini text models from versions 2.5 through 3.8."
         },
 
         {
             "keywords": ["llm"],
-            "answer": "Gemini 3.6 Flash is the Large Language Model used by this assistant."
+            "answer": "PHP code generation uses Gemini; explanations use NVIDIA NIM."
         },
 
         {
@@ -447,89 +718,6 @@ def check_rule_engine(question: str):
             "keywords": ["cache"],
             "answer": "Generated answers are stored in answer_cache.json."
         },
-
-        # --------------------------------------------
-        # Laravel Structure
-        # --------------------------------------------
-
-        {
-            "keywords": ["database", "mysql"],
-            "answer": "Database configuration is available inside config/database.php."
-        },
-
-        {
-            "keywords": ["route", "routes"],
-            "answer": "Application routes are defined in routes/web.php."
-        },
-
-        {
-            "keywords": ["controller", "controllers"],
-            "answer": "Controllers are located inside app/Http/Controllers."
-        },
-
-        {
-            "keywords": ["model", "models"],
-            "answer": "Models are stored inside app/Models."
-        },
-
-        {
-            "keywords": ["middleware"],
-            "answer": "Middleware classes are located inside app/Http/Middleware."
-        },
-
-        {
-            "keywords": ["migration", "migrations"],
-            "answer": "Database migrations are stored in database/migrations."
-        },
-
-        {
-            "keywords": ["blade", "view", "views"],
-            "answer": "Blade templates are located in resources/views."
-        },
-
-        {
-            "keywords": ["config"],
-            "answer": "Configuration files are stored inside the config directory."
-        },
-
-        {
-            "keywords": ["composer"],
-            "answer": "Composer manages PHP dependencies using composer.json."
-        },
-
-        # --------------------------------------------
-        # Common Modules
-        # --------------------------------------------
-
-        {
-            "keywords": ["login", "signin", "authentication"],
-            "answer": "Authentication is handled through Laravel authentication controllers and middleware."
-        },
-
-        {
-            "keywords": ["logout"],
-            "answer": "Logout functionality is handled through the authentication module."
-        },
-
-        {
-            "keywords": ["invoice", "billing"],
-            "answer": "Invoice functionality is implemented in the invoice module."
-        },
-
-        {
-            "keywords": ["payment"],
-            "answer": "Payment functionality is implemented in the payment module."
-        },
-
-        {
-            "keywords": ["user", "users"],
-            "answer": "User functionality is managed using the User model and related controllers."
-        },
-
-        {
-            "keywords": ["api"],
-            "answer": "API routes are generally defined in routes/api.php."
-        }
 
     ]
 
@@ -559,13 +747,13 @@ def query_rag(
     mime_type=None,
 ):
     """
-    Query the PHP RAG Assistant.
+    Query the repository knowledge assistant.
 
     Pipeline:
     1. Rule Engine
     2. Cache
     3. FAISS Retrieval
-    4. Gemini
+    4. Gemini or NVIDIA, selected by the request type
     5. Save Cache
     """
 
@@ -573,6 +761,11 @@ def query_rag(
     vectorstore_path = rag_components["vectorstore_path"]
     mock_mode = rag_components["mock_mode"]
     k = rag_components["k"]
+    provider = (
+        "gemini"
+        if is_code_generation_request(question)
+        else "nvidia"
+    )
 
     # ============================================================
     # 2. Cache
@@ -581,6 +774,7 @@ def query_rag(
     cache_key = make_cache_key(
         (question or "") + str(mime_type),
         vectorstore_path,
+        provider,
     )
 
     if mock_mode or (use_cache and not media_bytes):
@@ -596,6 +790,7 @@ def query_rag(
                     item
                     for item in cache.values()
                     if item.get("answer_version") == ANSWER_VERSION
+                    and item.get("provider") == provider
                     and " ".join(item.get("question", "").lower().split())
                     == normalized_question
                 ),
@@ -672,6 +867,7 @@ def query_rag(
         answer = generate_answer(
             rag_components["client"],
             prompt,
+            question=question or "",
             media_bytes=media_bytes,
             mime_type=mime_type,
         )
@@ -683,8 +879,17 @@ def query_rag(
 
         error_message = str(error)
 
-        if (
-            "RESOURCE_EXHAUSTED" in error_message
+        has_gemini_rate_limit_cause = False
+        cause = error
+        while cause is not None:
+            if isinstance(cause, APIError) and cause.code == 429:
+                has_gemini_rate_limit_cause = True
+                break
+            cause = cause.__cause__
+
+        if provider == "gemini" and (
+            has_gemini_rate_limit_cause
+            or "RESOURCE_EXHAUSTED" in error_message
             or "429" in error_message
             or "quota" in error_message.lower()
         ):
@@ -712,7 +917,8 @@ def query_rag(
             "question": question,
             "answer": answer,
             "answer_version": ANSWER_VERSION,
-            "model": GEMINI_MODEL,
+            "provider": provider,
+            "model": GEMINI_MODEL_RANGE if provider == "gemini" else NVIDIA_MODEL,
             "sources": source_files,
         }
 

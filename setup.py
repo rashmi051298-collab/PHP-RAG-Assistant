@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Setup script for PHP RAG Assistant.
+Setup script for the repository knowledge assistant.
 Creates virtual environment and installs dependencies.
 """
 
@@ -33,7 +33,7 @@ def main():
     """Main setup function."""
     print("""
     ╔══════════════════════════════════════════════════════╗
-    ║     PHP RAG Assistant - Setup Script                ║
+    ║     Repository Knowledge Assistant - Setup Script    ║
     ║     Version 1.0                                      ║
     ╚══════════════════════════════════════════════════════╝
     """)
@@ -86,7 +86,6 @@ def main():
     print(f"{'=' * 60}")
 
     directories = [
-        "data/laravel-crm-2.2",
         "vectorstore",
     ]
 
@@ -108,8 +107,8 @@ def main():
     else:
         print(f"   source {activate_cmd}")
 
-    print("\n2. ADD YOUR PHP FILES:")
-    print("   Copy your PHP files to: data/laravel-crm-2.2/")
+    print("\n2. KNOWLEDGE BASE:")
+    print("   The current local repository is indexed by default.")
 
     print("\n3. INGEST DATA:")
     print(f"   {python_exe} ingest.py")

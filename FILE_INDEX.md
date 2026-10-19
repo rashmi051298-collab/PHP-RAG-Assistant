@@ -1,4 +1,4 @@
-# 📑 PHP RAG Assistant - Complete File Index
+# 📑 Repository Knowledge Assistant - File Index
 
 ## Quick Navigation
 
@@ -22,8 +22,8 @@
 → Read: [README.md](README.md#api-reference) → API Reference section
 
 #### "Something isn't working"
-→ Read: [QUICKSTART.md](QUICKSTART.md#-common-issues--solutions) → Troubleshooting
-→ Or: [README.md](README.md#troubleshooting)
+→ Read: [QUICKSTART.md](QUICKSTART.md#troubleshooting) → Troubleshooting
+→ Or: [README.md](README.md#notes)
 
 ---
 
@@ -47,18 +47,16 @@
 ---
 
 #### `ingest.py` - Data Ingestion Pipeline
-**What it does:** Loads PHP files and creates vector database
+**What it does:** Loads repository text files and creates the FAISS index
 **Key functions:**
-- `load_php_files(data_dir)` - Load all .php files
-- `create_langchain_documents()` - Convert format
-- `split_documents()` - Chunk for LLM context
-- `create_vectorstore()` - Build FAISS index
-- `load_vectorstore()` - Load existing index
-- `ingest_data()` - Complete pipeline
+- `load_knowledge_documents(source_dir)` - Load supported text files
+- `get_knowledge_splitter()` - Split files into overlapping chunks
+- `get_knowledge_base_dir()` - Resolve the selected corpus directory
+- `main()` - Build and save the FAISS index
 
 **Usage:** `python ingest.py`
 
-**Lines:** 210 | **Dependencies:** langchain, faiss
+**Dependencies:** LangChain, FAISS, Hugging Face embeddings
 
 ---
 
@@ -285,7 +283,7 @@ PHP_RAG_Assistant/
 │   └── verify.py                 (140 lines)
 │
 ├── Data Directories (auto-created)
-│   ├── data/laravel-crm-2.2/
+│   ├── current repository root (knowledge base)
 │   └── vectorstore/
 │
 └── Virtual Environment (auto-created)
@@ -319,7 +317,7 @@ PHP_RAG_Assistant/
 1. This file (FILE_INDEX.md) - 2 min
 2. QUICKSTART.md - 5 min
 3. Run setup.py - 5 min
-4. Add PHP files
+4. Index the current local repository (default)
 5. Run ingest.py - 10-15 min
 6. Run streamlit - instant
 7. Refer to README.md as needed
@@ -345,7 +343,7 @@ PHP_RAG_Assistant/
 **Install the project?**
 - See: QUICKSTART.md, Step 1
 
-**Add my PHP files?**
+**Add the repository to index?**
 - See: QUICKSTART.md, Step 2
 
 **Create the vector database?**
@@ -426,7 +424,7 @@ All files have been created:
 - ✅ PROJECT_STRUCTURE.md
 - ✅ BUILD_COMPLETE.md
 - ✅ FILE_INDEX.md (this file)
-- ✅ data/laravel-crm-2.2/ (directory)
+- ✅ Current repository root (default knowledge base)
 - ✅ vectorstore/ (directory)
 
 **Status: ✅ ALL COMPLETE**

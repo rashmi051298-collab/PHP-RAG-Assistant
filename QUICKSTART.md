@@ -1,211 +1,80 @@
-# 🚀 PHP RAG Assistant - Quick Start Guide
+# PHP Vibe Coding Assistant - Quick Start
 
-## ⚡ 5-Minute Setup
+## 1. Install dependencies
 
-### 1️⃣ Initialize Project (Windows)
-
-```bash
-# Run setup script
-python setup.py
-
-# Activate virtual environment
+```powershell
+python -m venv venv
 venv\Scripts\activate
-
-# Verify you see (venv) in your terminal
+pip install -r requirements.txt
+$env:GEMINI_API_KEY="YOUR_API_KEY"
+$env:NVIDIA_API_KEY="YOUR_NVIDIA_API_KEY"
 ```
 
-### 1️⃣ Initialize Project (macOS/Linux)
+Gemini is used for PHP code/project generation; NVIDIA NIM is used for explanations.
+Set both keys in the same terminal before starting Streamlit. On macOS/Linux,
+activate with `source venv/bin/activate` and export both environment variables.
+The default NVIDIA model is `nvidia/nemotron-3.5-lightning-30b-a3b`. In PowerShell, set
+`$env:NVIDIA_MODEL="nvidia/nemotron-3.5-lightning-30b-a3b"` if your environment still has
+an older model ID configured, then restart Streamlit.
 
-```bash
-# Run setup script
-python3 setup.py
+## 2. Use the current local repository
 
-# Activate virtual environment
-source venv/bin/activate
+The indexer uses the `PHP-RAG-Assistant` checkout you are already in as its
+knowledge base. No cloning or copying is needed. It skips the legacy `data/`
+directory, generated files, virtual environments, and dependency folders.
 
-# Verify you see (venv) in your terminal
-```
+To index a different local checkout, set `KNOWLEDGE_BASE_DIR` to its path before
+running ingestion.
 
-### 2️⃣ Add Your PHP Files
+The indexer processes supported text-based source files and documentation (for
+example Python, PHP, JavaScript/TypeScript, Java, Go, Rust, Markdown, JSON, YAML,
+TOML, SQL, and plain text). It skips binary files, common generated/dependency
+folders, and `.env` files except `.env.example`.
 
-Copy your Laravel/PHP files to:
-```
-data/laravel-crm-2.2/
-├── app/
-├── routes/
-├── config/
-└── ... (all your PHP files)
-```
+## 3. Build the vector store
 
-### 3️⃣ Create Vector Store (5-15 minutes)
-
-```bash
-# Make sure venv is activated first!
-python ingest.py
-```
-
-You should see:
-```
-=== Starting Data Ingestion ===
-
-Total PHP files found: 150
-Documents loaded: 150
-LangChain documents created: 150
-Documents split into 450 chunks
-Vector store saved successfully to vectorstore
-
-=== Data Ingestion Complete ===
-```
-
-### 4️⃣ Launch the App
-
-```bash
-# Make sure venv is activated!
-streamlit run app.py
-```
-
-This opens `http://localhost:8501` in your browser automatically.
-
-### 5️⃣ Start Chatting! 💬
-
-In the Streamlit interface:
-1. Click **"Initialize RAG System"** button
-2. Ask questions like:
-   - "What does the LoginController do?"
-   - "Explain the authentication flow"
-   - "Show me the API routes"
-
----
-
-## 📁 Project Structure After Setup
-
-```
-PHP_RAG_Assistant/
-├── venv/                    ← Virtual environment (created by setup.py)
-├── data/
-│   └── laravel-crm-2.2/     ← Your PHP files go here
-├── vectorstore/             ← Created by ingest.py (index + metadata)
-│   ├── index.faiss
-│   └── index.pkl
-├── app.py                   ← Streamlit chat interface
-├── ingest.py                ← Data ingestion script
-├── rag.py                   ← RAG chain setup
-├── setup.py                 ← Automated setup
-├── requirements.txt         ← Dependencies
-├── README.md                ← Full documentation
-├── QUICKSTART.md            ← This file
-└── .gitignore               ← Git configuration
-```
-
----
-
-## 🆘 Common Issues & Solutions
-
-### ❌ "Command not found: python"
-**Solution**: Use `python3` instead on macOS/Linux
-```bash
-python3 setup.py
-python3 ingest.py
-streamlit run app.py
-```
-
-### ❌ "No module named 'streamlit'"
-**Solution**: Make sure virtual environment is activated
-```bash
-# Check (venv) appears in terminal
-# If not, run:
-source venv/bin/activate  # macOS/Linux
-venv\Scripts\activate     # Windows
-```
-
-### ❌ "Vectorstore not found"
-**Solution**: Run data ingestion first
 ```bash
 python ingest.py
 ```
 
-### ❌ "Out of Memory"
-**Solution**: Your code is too large. Options:
-1. Process in smaller batches
-2. Use `chunk_size=250` in ingest.py
-3. Reduce `max_new_tokens` in rag.py
+This creates or updates the FAISS index in `vectorstore/`, using Hugging Face
+`BAAI/bge-base-en-v1.5` embeddings. Re-run ingestion whenever the knowledge base
+changes.
 
-### ❌ "CUDA not available"
-**Solution**: This is fine - will use CPU. Or install GPU support:
+## 4. Start chatting
+
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+streamlit run app.py
 ```
 
----
+The assistant retrieves relevant repository context with FAISS and uses Gemini
+for code-generation requests and NVIDIA for explanations. Ask PHP questions,
+request code, or describe a full project.
+For project requests, it can package path-labeled files into a ZIP download.
+Example prompts:
 
-## 🎯 Workflow Summary
+- "Summarize this repository's architecture."
+- "Which files implement the main user workflow?"
+- "Where is configuration loaded?"
+- "Explain how this module is tested."
+- "Build a PHP inventory app with login, CRUD, validation, tests, and setup instructions."
 
-```
-1. Setup: python setup.py
-2. Add Files: Copy to data/laravel-crm-2.2/
-3. Ingest: python ingest.py
-4. Run: streamlit run app.py
-5. Chat: Use web interface
-```
+## Troubleshooting
 
----
+- **Vectorstore not found:** Run `python ingest.py` first.
+- **No supported text files found:** Verify the current repository contains supported
+  text/code files, or set `KNOWLEDGE_BASE_DIR`.
+- **Gemini API key error:** Set `GEMINI_API_KEY` in the same terminal before
+  requesting code generation.
+- **NVIDIA API key error:** Set `NVIDIA_API_KEY` in the same terminal before
+  asking for explanations.
+- **NVIDIA HTTP 410:** The selected model or hosted service may no longer be
+  available. Choose an active model from NVIDIA's API Catalog, set
+  `$env:NVIDIA_MODEL="model-id"` in PowerShell, then restart Streamlit.
+- **Need a different repository:** Set `KNOWLEDGE_BASE_DIR` to that local checkout,
+  then rebuild the index.
 
-## ⚙️ Configuration
+Generated code is a starting point: review it, configure secrets and infrastructure,
+and run its tests/security checks before deploying to production.
 
-### Change Data Location
-Edit line in `ingest.py`:
-```python
-data_dir = r"D:\PHP_RAG_Assistant\PHP Files"  # Change this path
-```
-
-### Change LLM Model
-Edit line in `app.py` sidebar or in `rag.py`:
-```python
-model_name = "google/gemma-2-2b-it"  # Default
-# Try: "meta-llama/Llama-2-7b-chat-hf"
-```
-
-### Adjust Retrieval
-In `app.py` sidebar:
-- **Number of documents**: 1-10 (default: 4)
-- Lower = faster, less context
-- Higher = slower, more context
-
----
-
-## 📊 Performance Expectations
-
-| Hardware | Setup Time | Ingest (100 files) | First Query | Subsequent |
-|----------|-----------|-------------------|-------------|------------|
-| CPU only | 5 min | 15 min | 45 sec | 15 sec |
-| GPU (6GB) | 5 min | 3 min | 8 sec | 3 sec |
-
----
-
-## 🔗 Next Steps
-
-- 📚 Read [README.md](README.md) for advanced configuration
-- 🎓 Check example questions in the app
-- 🤖 Try different LLM models
-- 📈 Scale to larger codebases
-
----
-
-## 💡 Tips
-
-1. **First Run Slow?** Yes, model loading takes time. Subsequent queries are fast.
-2. **Want Faster?** Use a GPU or reduce `chunk_size` in ingest.py
-3. **Too Many Results?** Reduce `k` value in app.py sidebar
-4. **Bad Answers?** Add more context by increasing `k`
-
----
-
-## 🆘 Need More Help?
-
-1. Check README.md → Troubleshooting section
-2. Read the docstrings in app.py, ingest.py, rag.py
-3. Check Streamlit docs: https://docs.streamlit.io
-
----
-
-**Happy coding! 🎉** If you have questions, check the full documentation in README.md
+See [README.md](README.md) for configuration and details.

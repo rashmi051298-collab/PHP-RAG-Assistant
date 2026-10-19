@@ -1,11 +1,11 @@
 @echo off
-REM Setup script for PHP RAG Assistant (Windows)
+REM Setup script for repository knowledge assistant (Windows)
 
 setlocal enabledelayedexpansion
 
 echo.
 echo ╔════════════════════════════════════════════════════════╗
-echo ║  PHP RAG Assistant - Setup Script                     ║
+echo ║  Repository Knowledge Assistant - Setup Script         ║
 echo ║  Version 1.0 (Windows)                                ║
 echo ╚════════════════════════════════════════════════════════╝
 echo.
@@ -86,10 +86,8 @@ echo ═════════════════════════
 echo 📁 Creating project directories...
 echo ════════════════════════════════════════════════════════
 
-if not exist "data\laravel-crm-2.2" mkdir data\laravel-crm-2.2
 if not exist "vectorstore" mkdir vectorstore
 
-echo ✓ Created data\laravel-crm-2.2
 echo ✓ Created vectorstore
 
 REM Success message
@@ -104,8 +102,7 @@ echo.
 echo 1. ✓ Virtual environment is ALREADY ACTIVATED
 echo   (You see "(venv)" at the start of your terminal)
 echo.
-echo 2. ADD YOUR PHP FILES:
-echo   Copy your PHP files to: data\laravel-crm-2.2\
+echo 2. THE CURRENT LOCAL REPOSITORY IS THE KNOWLEDGE BASE
 echo.
 echo 3. INGEST DATA:
 echo   python ingest.py

@@ -1,10 +1,10 @@
 #!/bin/bash
-# Setup script for PHP RAG Assistant (Unix/Linux/macOS)
+# Setup script for repository knowledge assistant (Unix/Linux/macOS)
 
 set -e
 
 echo "╔════════════════════════════════════════════════════════╗"
-echo "║  PHP RAG Assistant - Setup Script                     ║"
+echo "║  Repository Knowledge Assistant - Setup Script         ║"
 echo "║  Version 1.0                                          ║"
 echo "╚════════════════════════════════════════════════════════╝"
 echo ""
@@ -63,9 +63,7 @@ echo "════════════════════════�
 echo "📁 Creating project directories..."
 echo "════════════════════════════════════════════════════════"
 
-mkdir -p data/laravel-crm-2.2
 mkdir -p vectorstore
-echo "✓ Created data/laravel-crm-2.2"
 echo "✓ Created vectorstore"
 
 # Success message
@@ -80,8 +78,7 @@ echo ""
 echo "1. ✓ Virtual environment is ALREADY ACTIVATED"
 echo "   (You see 'venv' at the start of your terminal)"
 echo ""
-echo "2. ADD YOUR PHP FILES:"
-echo "   Copy your PHP files to: data/laravel-crm-2.2/"
+echo "2. THE CURRENT LOCAL REPOSITORY IS THE KNOWLEDGE BASE"
 echo ""
 echo "3. INGEST DATA:"
 echo "   python ingest.py"
