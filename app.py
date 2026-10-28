@@ -2,6 +2,7 @@ import os
 import json
 from pathlib import Path
 
+from ingest import VECTORSTORE_PATH, main as build_vectorstore
 from rag import (
     create_rag_chain,
     query_rag,
@@ -10,8 +11,31 @@ from rag import (
 )
 import streamlit as st
 
-VECTORSTORE_PATH = "vectorstore"
 DEFAULT_K = 12
+
+
+@st.cache_resource
+def ensure_vectorstore():
+    """Build the repository index on first launch when it is not deployed."""
+    required_files = (
+        VECTORSTORE_PATH / "index.faiss",
+        VECTORSTORE_PATH / "index.pkl",
+    )
+    if all(path.is_file() for path in required_files):
+        return
+
+    with st.spinner(
+        "Building the repository search index. This can take several minutes "
+        "on first launch..."
+    ):
+        build_vectorstore()
+
+    missing_files = [path.name for path in required_files if not path.is_file()]
+    if missing_files:
+        raise FileNotFoundError(
+            "Index generation finished without creating required vectorstore "
+            f"files: {', '.join(missing_files)}"
+        )
 
 
 def init_session_state():
@@ -150,11 +174,8 @@ PHP code/project generation uses Gemini; explanations use NVIDIA NIM.
             st.session_state.rag_components = None
 
     if st.session_state.rag_components is None:
-        if not os.path.exists(VECTORSTORE_PATH):
-            st.error("Vectorstore not found. Run `python ingest.py` first.")
-            st.stop()
-
         try:
+            ensure_vectorstore()
             load_rag_system(k, mock_mode)
         except Exception as error:
             st.error(f"Unable to load the assistant: {error}")

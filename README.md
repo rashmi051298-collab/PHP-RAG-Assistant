@@ -92,7 +92,10 @@ python ingest.py
 ```
 
 The index is saved under `vectorstore/`. The GitHub repository being indexed must
-already be available locally.
+already be available locally. When the app starts and this index is missing (as it
+is by default in Streamlit Cloud, where `vectorstore/` is not committed), the app
+builds the index automatically. The first launch can take several minutes while
+the embedding model is downloaded and the repository is indexed.
 
 ## Run the assistant
 
