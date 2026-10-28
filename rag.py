@@ -16,8 +16,8 @@ from pathlib import PurePosixPath, PureWindowsPath
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError, ServerError
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain_huggingface import HuggingFaceEmbeddings
 
 EMBEDDING_MODEL = "BAAI/bge-base-en-v1.5"
 GEMINI_MODEL_RANGE = "2.5-3.8"
