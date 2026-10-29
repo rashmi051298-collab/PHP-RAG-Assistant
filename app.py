@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from pathlib import Path
 
 from ingest import VECTORSTORE_PATH, main as build_vectorstore
@@ -218,13 +219,18 @@ PHP code/project generation uses Gemini; explanations use NVIDIA NIM.
 
             with st.chat_message("assistant"):
                 try:
-                    answer, _, _, from_cache, generated_file_path = query_rag(
-                        st.session_state.rag_components,
-                        question,
-                        use_cache=use_cache,
-                        media_bytes=media_bytes,
-                        mime_type=mime_type,
-                    )
+                    response_started_at = time.perf_counter()
+                    with st.spinner(
+                        "Searching the repository and waiting for the response..."
+                    ):
+                        answer, _, _, from_cache, generated_file_path = query_rag(
+                            st.session_state.rag_components,
+                            question,
+                            use_cache=use_cache,
+                            media_bytes=media_bytes,
+                            mime_type=mime_type,
+                        )
+                    response_seconds = time.perf_counter() - response_started_at
 
                     # show assistant answer
                     st.markdown(answer)
@@ -248,8 +254,15 @@ PHP code/project generation uses Gemini; explanations use NVIDIA NIM.
                                 ),
                             )
 
-                    if from_cache:
-                        st.caption("Saved answer used — Gemini was not called.")
+                    response_status = (
+                        "saved answer"
+                        if from_cache
+                        else "new response"
+                    )
+                    st.caption(
+                        f"Response time: {response_seconds:.1f} seconds "
+                        f"({response_status})."
+                    )
 
                     st.session_state.messages.append(
                         {"role": "assistant", "content": answer}

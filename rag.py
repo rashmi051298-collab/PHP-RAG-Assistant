@@ -10,6 +10,7 @@ import math
 import os
 import re
 import requests
+import time
 import zipfile
 from pathlib import Path
 from pathlib import PurePosixPath, PureWindowsPath
@@ -29,6 +30,7 @@ MAX_PROJECT_FILES = 50
 MAX_PROJECT_FILE_BYTES = 512 * 1024
 MAX_PROJECT_TOTAL_BYTES = 2 * 1024 * 1024
 MAX_OUTPUT_TOKENS = 8192
+GEMINI_MODEL_CACHE_TTL_SECONDS = 600
 
 ASSISTANT_IMPLEMENTATION_CONTEXT = """
 This PHP Vibe Coding Assistant is a Python application with a Streamlit chat
@@ -339,14 +341,21 @@ def get_supported_gemini_models(client):
     return [name for _, _, name in sorted(models, key=sort_key, reverse=True)]
 
 
-def generate_gemini_answer(client, prompt, media_bytes=None, mime_type=None):
+def generate_gemini_answer(
+    client,
+    prompt,
+    media_bytes=None,
+    mime_type=None,
+    models=None,
+):
     """Try currently available Gemini text-generation models in descending order."""
     if client is None:
         raise RuntimeError(
             "GEMINI_API_KEY is not set. Add it to use Gemini for code generation."
         )
 
-    models = get_supported_gemini_models(client)
+    if models is None:
+        models = get_supported_gemini_models(client)
     if not models:
         raise RuntimeError(
             "No Gemini 2.5–3.8 text-generation models are available for this API key."
@@ -500,6 +509,7 @@ def generate_answer(
     question,
     media_bytes=None,
     mime_type=None,
+    gemini_models=None,
 ):
     """Route code-generation requests to Gemini and explanations to NVIDIA."""
     if is_code_generation_request(question):
@@ -508,6 +518,7 @@ def generate_answer(
             prompt,
             media_bytes=media_bytes,
             mime_type=mime_type,
+            models=gemini_models,
         )
     return generate_nvidia_answer(
         prompt,
@@ -628,6 +639,8 @@ def create_rag_chain(vectorstore_path="vectorstore", k=DEFAULT_K, mock_mode=Fals
         "k": k,
         "mock_mode": mock_mode,
         "vectorstore_path": vectorstore_path,
+        "gemini_models": None,
+        "gemini_models_checked_at": 0.0,
     }
 
 def check_rule_engine(question: str):
@@ -878,6 +891,19 @@ def query_rag(
     # ============================================================
 
     try:
+        gemini_models = None
+        if provider == "gemini" and rag_components["client"] is not None:
+            checked_at = rag_components.get("gemini_models_checked_at", 0.0)
+            if (
+                rag_components.get("gemini_models") is None
+                or time.monotonic() - checked_at
+                >= GEMINI_MODEL_CACHE_TTL_SECONDS
+            ):
+                rag_components["gemini_models"] = get_supported_gemini_models(
+                    rag_components["client"]
+                )
+                rag_components["gemini_models_checked_at"] = time.monotonic()
+            gemini_models = rag_components["gemini_models"]
 
         answer = generate_answer(
             rag_components["client"],
@@ -885,6 +911,7 @@ def query_rag(
             question=question or "",
             media_bytes=media_bytes,
             mime_type=mime_type,
+            gemini_models=gemini_models,
         )
 
         if not answer.strip():

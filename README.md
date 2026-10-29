@@ -107,13 +107,18 @@ Ask questions about architecture, implementation, configuration, or documentatio
 The assistant retrieves relevant chunks from the index and includes source paths
 when responding. If the indexed files do not support a repository-specific answer,
 it should say so rather than infer project facts.
+After each answer, the chat shows its end-to-end response time. This includes repository
+search and, when needed, the remote model response. Provider/network time varies; an
+answer served from the local cache does not make a model request. The first launch's
+index and embedding-model setup is separate from per-question response time.
 
 ## Features
 
 - MMR retrieval from a local FAISS vectorstore
 - Hugging Face embeddings and Gemini responses
 - Repository-aware source paths
-- Local answer caching and adjustable retrieval depth
+- Local answer caching, 10-minute Gemini model-discovery caching, and adjustable
+  retrieval depth
 - Demo Mode for testing without Gemini calls
 - Optional image/video prompts
 - Downloadable single PHP files and multi-file project ZIPs

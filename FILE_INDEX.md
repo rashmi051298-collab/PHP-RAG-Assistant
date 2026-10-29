@@ -448,7 +448,9 @@ All files have been created:
 3. **Update imports:** After changing module names
 4. **Test locally:** Before deployment
 5. **Back up vectorstore:** After successful ingest
-6. **Monitor memory:** First query loads model (~5 seconds)
+6. **Watch cold-start behavior:** The embedding model and vectorstore are loaded
+   when the assistant initializes; if the vectorstore must be built, first launch
+   can take several minutes. Per-answer response time is shown in the chat.
 7. **Use GPU:** For 3x faster performance (optional)
 
 ---

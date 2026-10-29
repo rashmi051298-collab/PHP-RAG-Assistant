@@ -21,6 +21,10 @@ The pipeline splits files into overlapping chunks, embeds them with Hugging Face
 `BAAI/bge-base-en-v1.5`, and stores the vectors in FAISS. At query time, FAISS
 retrieves relevant chunks, then routes code generation to available Gemini models
 and explanations to NVIDIA NIM.
+Repeated answers can use the local answer cache, and Gemini model discovery is
+cached for 10 minutes per active chat session. The chat displays end-to-end response
+time so repository search and remote-provider latency can be distinguished from
+cached answers.
 
 The supported source formats and excluded paths are defined in `ingest.py`. Binary
 files and common generated/dependency directories are skipped, as are `.env` files

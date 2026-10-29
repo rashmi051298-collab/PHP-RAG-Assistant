@@ -51,6 +51,9 @@ The assistant retrieves relevant repository context with FAISS and uses Gemini
 for code-generation requests and NVIDIA for explanations. Ask PHP questions,
 request code, or describe a full project.
 For project requests, it can package path-labeled files into a ZIP download.
+Each answer shows its end-to-end response time. Remote model/network time varies;
+repeated prompts can use a saved answer without contacting a model. Gemini model
+discovery is cached for 10 minutes during the active chat session.
 Example prompts:
 
 - "Summarize this repository's architecture."

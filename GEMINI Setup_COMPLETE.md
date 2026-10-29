@@ -277,9 +277,11 @@ pip install -r requirements.txt
 
 ## Slow First Response
 
-The first request may take a few seconds while the API initializes.
-
-Subsequent responses are typically faster.
+The chat displays the elapsed time after each response. This includes repository
+search and any remote model call; provider and network latency vary. Repeated prompts
+can return from the local answer cache, and Gemini model discovery is reused for
+10 minutes during the active chat session. The initial index/embedding-model setup
+is separate and can take several minutes when the vectorstore is missing.
 
 ---
 
