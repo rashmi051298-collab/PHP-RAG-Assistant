@@ -25,6 +25,10 @@ Repeated answers can use the local answer cache, and Gemini model discovery is
 cached for 10 minutes per active chat session. The chat displays end-to-end response
 time so repository search and remote-provider latency can be distinguished from
 cached answers.
+For best-effort latency targets, code requests retrieve at most 4 chunks and project
+requests at most 6; Gemini Flash models are preferred over Pro models within the same
+version. The UI shows 5-second code and 10-second project targets, but hosted model
+and network latency can exceed them.
 
 The supported source formats and excluded paths are defined in `ingest.py`. Binary
 files and common generated/dependency directories are skipped, as are `.env` files

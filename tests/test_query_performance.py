@@ -6,6 +6,93 @@ import rag
 
 
 class QueryPerformanceTests(unittest.TestCase):
+    def test_code_and_project_requests_use_smaller_retrieval_budgets(self):
+        test_cases = (
+            ("Write PHP code for a login form", 4, 16, 5),
+            ("Build a complete PHP project for inventory", 6, 24, 10),
+        )
+
+        for question, expected_k, expected_fetch_k, expected_target in test_cases:
+            with self.subTest(question=question), tempfile.TemporaryDirectory() as temporary_dir:
+                vectorstore = Mock(
+                    max_marginal_relevance_search=Mock(return_value=[])
+                )
+                components = {
+                    "vectorstore": vectorstore,
+                    "client": object(),
+                    "k": 12,
+                    "mock_mode": False,
+                    "vectorstore_path": temporary_dir,
+                }
+
+                with (
+                    patch.object(
+                        rag,
+                        "get_supported_gemini_models",
+                        return_value=["models/gemini-3.8-flash"],
+                    ),
+                    patch.object(
+                        rag,
+                        "generate_answer",
+                        return_value="Generated answer",
+                    ),
+                    patch.object(rag, "save_generated_php_code", return_value=None),
+                ):
+                    rag.query_rag(components, question, use_cache=False)
+
+                self.assertEqual(
+                    rag.get_response_time_target(question),
+                    expected_target,
+                )
+                self.assertEqual(
+                    vectorstore.max_marginal_relevance_search.call_args.kwargs[
+                        "k"
+                    ],
+                    expected_k,
+                )
+                self.assertEqual(
+                    vectorstore.max_marginal_relevance_search.call_args.kwargs[
+                        "fetch_k"
+                    ],
+                    expected_fetch_k,
+                )
+
+    def test_explanation_retrieval_depth_remains_unchanged(self):
+        vectorstore = Mock(max_marginal_relevance_search=Mock(return_value=[]))
+        components = {
+            "vectorstore": vectorstore,
+            "client": None,
+            "k": 12,
+            "mock_mode": False,
+            "vectorstore_path": "vectorstore",
+        }
+
+        with (
+            patch.object(rag, "generate_answer", return_value="Explanation"),
+            patch.object(rag, "save_generated_php_code", return_value=None),
+        ):
+            rag.query_rag(
+                components,
+                "Explain how caching works in a search system",
+                use_cache=False,
+            )
+
+        self.assertIsNone(
+            rag.get_response_time_target(
+                "Explain how caching works in a search system"
+            )
+        )
+        self.assertEqual(
+            vectorstore.max_marginal_relevance_search.call_args.kwargs["k"],
+            12,
+        )
+        self.assertEqual(
+            vectorstore.max_marginal_relevance_search.call_args.kwargs[
+                "fetch_k"
+            ],
+            48,
+        )
+
     def test_gemini_model_discovery_is_reused_within_the_cache_window(self):
         models = ["models/gemini-3.8-flash"]
         components = {

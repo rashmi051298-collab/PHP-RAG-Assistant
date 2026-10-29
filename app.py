@@ -9,6 +9,7 @@ from rag import (
     query_rag,
     load_answer_cache,
     clear_answer_cache,
+    get_response_time_target,
 )
 import streamlit as st
 
@@ -259,9 +260,21 @@ PHP code/project generation uses Gemini; explanations use NVIDIA NIM.
                         if from_cache
                         else "new response"
                     )
+                    target_seconds = (
+                        None
+                        if from_cache
+                        else get_response_time_target(question)
+                    )
+                    target_note = (
+                        f" | Best-effort target: {target_seconds} seconds; "
+                        "model and network latency can exceed it."
+                        if target_seconds is not None
+                        else "."
+                    )
                     st.caption(
                         f"Response time: {response_seconds:.1f} seconds "
-                        f"({response_status})."
+                        f"({response_status})"
+                        f"{target_note}"
                     )
 
                     st.session_state.messages.append(

@@ -111,6 +111,14 @@ After each answer, the chat shows its end-to-end response time. This includes re
 search and, when needed, the remote model response. Provider/network time varies; an
 answer served from the local cache does not make a model request. The first launch's
 index and embedding-model setup is separate from per-question response time.
+Code-generation requests use a best-effort 5-second target and project-generation
+requests use a 10-second target. These are not hard deadlines: model/network latency
+can exceed them. To reduce work before generation, code requests retrieve up to 4
+repository chunks and project requests up to 6; available Gemini Flash models are
+preferred over Pro models within the same version. Explanations keep the configured
+retrieval depth. Single-code responses use a 2,048-token output ceiling to reduce
+generation time; project responses keep the existing 8,192-token ceiling to preserve
+room for multi-file output.
 
 ## Features
 
@@ -119,6 +127,7 @@ index and embedding-model setup is separate from per-question response time.
 - Repository-aware source paths
 - Local answer caching, 10-minute Gemini model-discovery caching, and adjustable
   retrieval depth
+- Best-effort 5-second code and 10-second project response targets
 - Demo Mode for testing without Gemini calls
 - Optional image/video prompts
 - Downloadable single PHP files and multi-file project ZIPs

@@ -283,6 +283,13 @@ can return from the local answer cache, and Gemini model discovery is reused for
 10 minutes during the active chat session. The initial index/embedding-model setup
 is separate and can take several minutes when the vectorstore is missing.
 
+Code-generation requests have a best-effort 5-second target; complete project
+requests have a best-effort 10-second target. These cannot be guaranteed because
+the hosted model controls response time. The app reduces retrieval context to at
+most 4 chunks for code and 6 for projects and prefers Gemini Flash over Pro models
+of the same version. Single-code output is limited to 2,048 tokens; multi-file
+projects retain the existing 8,192-token output ceiling.
+
 ---
 
 # 🎯 Ready to Go!

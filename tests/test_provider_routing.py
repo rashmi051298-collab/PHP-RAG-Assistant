@@ -53,6 +53,27 @@ class ProviderRoutingTests(unittest.TestCase):
         gemini.assert_called_once()
         nvidia.assert_called_once()
 
+    def test_code_and_project_requests_use_distinct_output_budgets(self):
+        with patch.object(rag, "generate_gemini_answer", return_value="answer") as generate:
+            rag.generate_answer(
+                object(),
+                "prompt",
+                question="Write PHP code for a login form",
+            )
+            rag.generate_answer(
+                object(),
+                "prompt",
+                question="Build a complete PHP project for inventory",
+            )
+
+        self.assertEqual(
+            [
+                call.kwargs["max_output_tokens"]
+                for call in generate.call_args_list
+            ],
+            [rag.MAX_CODE_OUTPUT_TOKENS, rag.MAX_OUTPUT_TOKENS],
+        )
+
     def test_model_discovery_includes_supported_text_models_in_range_only(self):
         client = SimpleNamespace(
             models=SimpleNamespace(
@@ -88,6 +109,29 @@ class ProviderRoutingTests(unittest.TestCase):
             ["models/gemini-3.8-flash", "models/gemini-2.5-pro"],
         )
         client.models.list.assert_called_once()
+
+    def test_model_discovery_prefers_flash_over_pro_within_a_version(self):
+        client = SimpleNamespace(
+            models=SimpleNamespace(
+                list=Mock(
+                    return_value=[
+                        SimpleNamespace(
+                            name="models/gemini-3.8-pro",
+                            supported_actions=["generateContent"],
+                        ),
+                        SimpleNamespace(
+                            name="models/gemini-3.8-flash",
+                            supported_actions=["generateContent"],
+                        ),
+                    ]
+                )
+            )
+        )
+
+        self.assertEqual(
+            rag.get_supported_gemini_models(client),
+            ["models/gemini-3.8-flash", "models/gemini-3.8-pro"],
+        )
 
     def test_gemini_falls_back_when_a_model_is_unavailable(self):
         client = SimpleNamespace(

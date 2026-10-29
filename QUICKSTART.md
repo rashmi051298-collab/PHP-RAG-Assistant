@@ -54,6 +54,11 @@ For project requests, it can package path-labeled files into a ZIP download.
 Each answer shows its end-to-end response time. Remote model/network time varies;
 repeated prompts can use a saved answer without contacting a model. Gemini model
 discovery is cached for 10 minutes during the active chat session.
+Code requests target 5 seconds and project requests target 10 seconds on a best-effort
+basis, not as hard deadlines. Code retrieval is limited to 4 chunks and project
+retrieval to 6 chunks to reduce prompt overhead; Gemini Flash is preferred when
+available. Single-code output is capped at 2,048 tokens; project output retains its
+8,192-token cap. Provider/network latency can still exceed either target.
 Example prompts:
 
 - "Summarize this repository's architecture."

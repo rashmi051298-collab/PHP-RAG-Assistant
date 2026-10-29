@@ -30,7 +30,12 @@ MAX_PROJECT_FILES = 50
 MAX_PROJECT_FILE_BYTES = 512 * 1024
 MAX_PROJECT_TOTAL_BYTES = 2 * 1024 * 1024
 MAX_OUTPUT_TOKENS = 8192
+MAX_CODE_OUTPUT_TOKENS = 2048
 GEMINI_MODEL_CACHE_TTL_SECONDS = 600
+CODE_RETRIEVAL_K = 4
+PROJECT_RETRIEVAL_K = 6
+CODE_RESPONSE_TARGET_SECONDS = 5
+PROJECT_RESPONSE_TARGET_SECONDS = 10
 
 ASSISTANT_IMPLEMENTATION_CONTEXT = """
 This PHP Vibe Coding Assistant is a Python application with a Streamlit chat
@@ -298,6 +303,27 @@ def is_code_generation_request(question):
     )
 
 
+def is_project_generation_request(question):
+    """Identify code-generation requests that ask for a project or multiple files."""
+    return bool(
+        is_code_generation_request(question)
+        and re.search(
+            r"\b(?:project|multi[- ]file)\b",
+            question or "",
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def get_response_time_target(question):
+    """Return a best-effort response-time target for code-generation requests."""
+    if is_project_generation_request(question):
+        return PROJECT_RESPONSE_TARGET_SECONDS
+    if is_code_generation_request(question):
+        return CODE_RESPONSE_TARGET_SECONDS
+    return None
+
+
 def get_supported_gemini_models(client):
     """List available text-generation models from Gemini 2.5 through 3.8."""
     models = []
@@ -330,9 +356,11 @@ def get_supported_gemini_models(client):
         family = match.group(1)
         major, minor = (2, 5) if family == "2.5" else (3, int(match.group(2)))
         model_variant = model_id.lower()
-        if "pro" in model_variant:
+        if "flash" in model_variant:
             priority = 3
         elif "lite" in model_variant:
+            priority = 2
+        elif "pro" in model_variant:
             priority = 1
         else:
             priority = 2
@@ -347,6 +375,7 @@ def generate_gemini_answer(
     media_bytes=None,
     mime_type=None,
     models=None,
+    max_output_tokens=MAX_CODE_OUTPUT_TOKENS,
 ):
     """Try currently available Gemini text-generation models in descending order."""
     if client is None:
@@ -373,7 +402,12 @@ def generate_gemini_answer(
     last_error = None
     for model in models:
         try:
-            response = _generate_content_with_retry(client, model, contents)
+            response = _generate_content_with_retry(
+                client,
+                model,
+                contents,
+                max_output_tokens,
+            )
             answer = (response.text or "").strip()
             if answer:
                 return answer
@@ -492,13 +526,18 @@ def generate_nvidia_answer(prompt, media_bytes=None):
     wait=wait_exponential(multiplier=1, min=2, max=8),
     reraise=True,
 )
-def _generate_content_with_retry(client, model, contents):
+def _generate_content_with_retry(
+    client,
+    model,
+    contents,
+    max_output_tokens=MAX_OUTPUT_TOKENS,
+):
     return client.models.generate_content(
         model=model,
         contents=contents,
         config=types.GenerateContentConfig(
             temperature=0.2,
-            max_output_tokens=MAX_OUTPUT_TOKENS,
+            max_output_tokens=max_output_tokens,
         ),
     )
 
@@ -519,6 +558,11 @@ def generate_answer(
             media_bytes=media_bytes,
             mime_type=mime_type,
             models=gemini_models,
+            max_output_tokens=(
+                MAX_OUTPUT_TOKENS
+                if is_project_generation_request(question)
+                else MAX_CODE_OUTPUT_TOKENS
+            ),
         )
     return generate_nvidia_answer(
         prompt,
@@ -863,10 +907,20 @@ def query_rag(
     # 3. Retrieve Documents
     # ============================================================
 
+    if is_project_generation_request(question):
+        retrieval_k = min(k, PROJECT_RETRIEVAL_K)
+        fetch_k = max(24, retrieval_k * 4)
+    elif provider == "gemini":
+        retrieval_k = min(k, CODE_RETRIEVAL_K)
+        fetch_k = max(16, retrieval_k * 4)
+    else:
+        retrieval_k = k
+        fetch_k = max(40, retrieval_k * 4)
+
     documents = vectorstore.max_marginal_relevance_search(
         question,
-        k=k,
-        fetch_k=max(40, k * 4),
+        k=retrieval_k,
+        fetch_k=fetch_k,
         lambda_mult=0.6,
     )
 
