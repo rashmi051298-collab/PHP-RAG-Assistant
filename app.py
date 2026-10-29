@@ -263,7 +263,7 @@ PHP code/project generation uses Gemini; explanations use NVIDIA NIM.
                     target_seconds = (
                         None
                         if from_cache
-                        else get_response_time_target(question)
+                        else get_response_time_target()
                     )
                     target_note = (
                         f" | Best-effort target: {target_seconds} seconds; "

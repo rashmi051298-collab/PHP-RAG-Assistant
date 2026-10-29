@@ -8,8 +8,8 @@ import rag
 class QueryPerformanceTests(unittest.TestCase):
     def test_code_and_project_requests_use_smaller_retrieval_budgets(self):
         test_cases = (
-            ("Write PHP code for a login form", 4, 16, 5),
-            ("Build a complete PHP project for inventory", 6, 24, 10),
+            ("Write PHP code for a login form", 4, 16, 25),
+            ("Build a complete PHP project for inventory", 6, 24, 25),
         )
 
         for question, expected_k, expected_fetch_k, expected_target in test_cases:
@@ -41,7 +41,7 @@ class QueryPerformanceTests(unittest.TestCase):
                     rag.query_rag(components, question, use_cache=False)
 
                 self.assertEqual(
-                    rag.get_response_time_target(question),
+                    rag.get_response_time_target(),
                     expected_target,
                 )
                 self.assertEqual(
@@ -77,10 +77,9 @@ class QueryPerformanceTests(unittest.TestCase):
                 use_cache=False,
             )
 
-        self.assertIsNone(
-            rag.get_response_time_target(
-                "Explain how caching works in a search system"
-            )
+        self.assertEqual(
+            rag.get_response_time_target(),
+            25,
         )
         self.assertEqual(
             vectorstore.max_marginal_relevance_search.call_args.kwargs["k"],

@@ -34,8 +34,7 @@ MAX_CODE_OUTPUT_TOKENS = 2048
 GEMINI_MODEL_CACHE_TTL_SECONDS = 600
 CODE_RETRIEVAL_K = 4
 PROJECT_RETRIEVAL_K = 6
-CODE_RESPONSE_TARGET_SECONDS = 5
-PROJECT_RESPONSE_TARGET_SECONDS = 10
+RESPONSE_TARGET_SECONDS = 25
 
 ASSISTANT_IMPLEMENTATION_CONTEXT = """
 This PHP Vibe Coding Assistant is a Python application with a Streamlit chat
@@ -315,13 +314,9 @@ def is_project_generation_request(question):
     )
 
 
-def get_response_time_target(question):
-    """Return a best-effort response-time target for code-generation requests."""
-    if is_project_generation_request(question):
-        return PROJECT_RESPONSE_TARGET_SECONDS
-    if is_code_generation_request(question):
-        return CODE_RESPONSE_TARGET_SECONDS
-    return None
+def get_response_time_target():
+    """Return the best-effort response-time target for a new answer."""
+    return RESPONSE_TARGET_SECONDS
 
 
 def get_supported_gemini_models(client):
